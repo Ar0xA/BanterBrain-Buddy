@@ -4,7 +4,7 @@ OLD PROJECT! I might pick this up again t some time, but for now this has been a
 [![banterbrain buddy intro video](https://img.youtube.com/vi/3U-PzTrTVyo/0.jpg)](https://www.youtube.com/watch?v=3U-PzTrTVyo)
 
 
-### BanterBrain Buddy v1.0.8 feature & bugfix release
+### BanterBrain Buddy v1.0.11 bugfix release
 
 **This program requires a valid OpenAI ChatGPT API key to operate _or_ a local Ollama installation.** 
 
@@ -19,6 +19,18 @@ You can also download Runtime Desktop here: [Windows Runtime Desktop 8.0.4](http
 - Plugging in/out audio devices while BBB runs can have an unforseen effect on your input/output and throw errors
 - No ability to check for Twitch followers
 - ElevenLabs API check (preloading voices) can sometimes timeout after 15 seconds. This makes the first time you use it, probably quite a bit slower when editing persona's, but that's only until it works. This cannot really be fixed on my side.
+
+### RELEASE V1.0.11
+Fixed:
+- Full codebase bug-hunt: startup no longer crashes or hangs on corrupt/missing settings or a first run (fresh install previously froze forever in the constructor)
+- Twitch event handlers (cheer, channel point redemption, resub) can no longer spin forever or crash the app when a message is empty or a persona is missing; resubs without a message are acknowledged again
+- Three persona dropdowns (subscription/cheering/channel point) saved to the wrong setting, now each stores its own persona
+- Access tokens are no longer written to log files
+- Chat word filter no longer matches everything when the filter file contains empty entries; missing/locked filter and language files are handled gracefully
+- TTS reliability: SSML escaping for Azure/Native (LLM text with & or < broke synthesis), ElevenLabs UI deadlock and audio device leaks fixed, unplugged audio devices fall back to the system default
+- OBS websource listener stops cleanly instead of crashing the app; unanswered HTTP requests are now closed
+- Empty API keys for OpenAI/Groq show a clear error instead of an SDK crash
+- Settings form: no more crashes on empty voice lists, hand-edited personas with missing fields, or a not-yet-existing config folder; hotkey, word filter and custom language forms close safely
 
 ### RELEASE V1.0.8 RELEASE
 New:

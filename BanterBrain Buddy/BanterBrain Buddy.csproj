@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows7.0</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
     <OutputType>WinExe</OutputType>
     <RootNamespace>BanterBrain_Buddy</RootNamespace>
     <IsWebBootstrapper>false</IsWebBootstrapper>
@@ -23,10 +23,14 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImportWindowsDesktopTargets>true</ImportWindowsDesktopTargets>
 	<ForceDesignerDPIUnaware>true</ForceDesignerDPIUnaware>
+	<Platforms>AnyCPU;x64;x86</Platforms>
   </PropertyGroup>
   <PropertyGroup>
     <GenerateManifests>true</GenerateManifests>
   </PropertyGroup>
+	<PropertyGroup>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	</PropertyGroup>
   <PropertyGroup>
     <ApplicationIcon>frog_119582.ico</ApplicationIcon>
   </PropertyGroup>
@@ -49,6 +53,9 @@
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
     <None Update="settings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="settings.json.example">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="sounds\level-up-191997.wav">
@@ -86,18 +93,18 @@
     <Content Include="frog_119582.ico" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="ElevenLabs-DotNet" Version="2.2.1" />
-    <PackageReference Include="log4net" Version="2.0.17" />
-    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.38.0" />
+    <PackageReference Include="ElevenLabs-DotNet" Version="3.7.2" />
+    <PackageReference Include="log4net" Version="3.5.0" />
+    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.52.0" />
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="MouseKeyHook" Version="5.7.1" />
     <PackageReference Include="NAudio" Version="2.2.1" />
-    <PackageReference Include="OllamaSharp" Version="2.0.10" />
-    <PackageReference Include="OpenAI" Version="1.11.0" />
-    <PackageReference Include="System.Speech" Version="9.0.0-preview.6.24327.7" />
-    <PackageReference Include="TwitchLib.Api" Version="3.10.0-preview-9ccfdfb" />
+    <PackageReference Include="OllamaSharp" Version="5.5.0" />
+    <PackageReference Include="OpenAI" Version="2.14.0" />
+    <PackageReference Include="System.Speech" Version="10.0.13" />
+    <PackageReference Include="TwitchLib.Api" Version="3.10.2" />
     <PackageReference Include="Microsoft.NETCore.Platforms" Version="8.0.0-preview.7.23375.6" />
-    <PackageReference Include="TwitchLib.EventSub.Core" Version="2.5.3-preview-e1a92de" />
+    <PackageReference Include="TwitchLib.EventSub.Core" Version="2.5.2" />
     <PackageReference Include="TwitchLib.EventSub.Websockets" Version="0.5.0" />
   </ItemGroup>
   <ItemGroup>

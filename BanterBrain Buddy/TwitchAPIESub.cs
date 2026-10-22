@@ -16,6 +16,7 @@ using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using System.Windows.Forms;
 using BanterBrain_Buddy.TwitchEventhandlers;
 using System.Runtime.CompilerServices;
+using System.Runtime.Versioning;
 
 
 /// <summary>
@@ -39,6 +40,8 @@ namespace BanterBrain_Buddy
     //eventhandler for custom channel point redemptions
     public delegate void ESubChannelPointRedemptionEventHandler(object source, OnChannelPointCustomRedemptionEventArgs e);
 
+
+
     public class TwitchAPIESub
     {
         private static readonly log4net.ILog _bBBlog = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
@@ -57,6 +60,9 @@ namespace BanterBrain_Buddy
         public event ESubChannelPointRedemptionEventHandler OnESubChannelPointRedemption;
 
         public string TwitchAccessToken { get; private set; }
+        //Display name of the account that was just authorized via the implicit flow, so the UI can
+        //auto-fill the matching "Account Name" field alongside the access token.
+        public string TwitchAuthorizedUserName { get; private set; }
         private bool TwitchAuthRequestResult { get; set; }
 
         private static string TwitchAuthRedirect { get; set; }
@@ -69,6 +75,9 @@ namespace BanterBrain_Buddy
         private static string TwitchChatAccessToken { get; set; }
 
         private bool TwitchDoAutomatedCheck { get; set; }
+
+        //set when the websocket is stopped on purpose so the disconnect handler stops reconnecting
+        private bool _eventSubIntentionalStop { get; set; }
 
         private bool TwitchMock { get; set; }
 
@@ -90,18 +99,21 @@ namespace BanterBrain_Buddy
         //if this is set, we need to send a test message to a channel on join.
         public string TwitchSendTestMessageOnJoin { get; set; }
 
+        private SettingsManager UserSettingsManager = SettingsManager.Instance;
 
         public readonly EventSubWebsocketClient _eventSubWebsocketClient;
 
         public TwitchAPIESub()
         {
             TwitchAccessToken = "";
+            TwitchAuthorizedUserName = "";
             TwitchAuthRequestResult = false;
             TwitchReadSettings();
             TwitchDoAutomatedCheck = true;
             _eventSubIllist = [];
             _gTwitchAPI = new TwitchLib.Api.TwitchAPI();
             _eventSubWebsocketClient = new EventSubWebsocketClient();
+            
         }
 
         /// <summary>
@@ -115,11 +127,30 @@ namespace BanterBrain_Buddy
 
             if (await ValidateAccessToken(TwitchAccessToken))
             {
-                var broadCaster = (await _gTwitchAPI.Helix.Users.GetUsersAsync(null, [TwChannelName])).Users;
-                var messageSender = (await _gTwitchAPI.Helix.Users.GetUsersAsync(null, [TwUsername])).Users;
-                TwitchUserID = messageSender[0].Id;
-                //this works great for validating
-                TwitchChannelID = broadCaster[0].Id;
+                try
+                {
+                    var broadCaster = (await _gTwitchAPI.Helix.Users.GetUsersAsync(null, [TwChannelName])).Users;
+                    var messageSender = (await _gTwitchAPI.Helix.Users.GetUsersAsync(null, [TwUsername])).Users;
+                    //a renamed or deleted account returns an empty list, indexing [0] would throw
+                    if (messageSender == null || messageSender.Length < 1)
+                    {
+                        _bBBlog.Error($"Twitch user {TwUsername} was not found, cannot initialize EventSub");
+                        return false;
+                    }
+                    if (broadCaster == null || broadCaster.Length < 1)
+                    {
+                        _bBBlog.Error($"Twitch channel {TwChannelName} was not found, cannot initialize EventSub");
+                        return false;
+                    }
+                    TwitchUserID = messageSender[0].Id;
+                    //this works great for validating
+                    TwitchChannelID = broadCaster[0].Id;
+                }
+                catch (Exception ex)
+                {
+                    _bBBlog.Error("Looking up Twitch users for EventSub init failed: " + ex.Message);
+                    return false;
+                }
                 //monitor channel ID, if the authorization user is not the same as the channel ID, we need to let the user know
                 if (TwitchUserID != TwitchChannelID)
                 {
@@ -188,15 +219,12 @@ namespace BanterBrain_Buddy
             //we can call this function multile times, so we need to check if we are already connected
             if (_eventSubWebsocketClient.SessionId != null && !TwitchMock)
             {
-                if (_conditions == null)
-                {
-                    //set the global, we need this for the EventSub
-                    _conditions = new()
+                //set the global, we need this for the EventSub
+                _conditions ??= new()
                     {
                     { "broadcaster_user_id", TwitchChannelID },
                              { "user_id", TwitchUserID },
                     };
-                }
                 _bBBlog.Info("Subscribing to chat messages");
                 await EventSubSubscribe("channel.chat.message", _conditions);
             }
@@ -212,15 +240,12 @@ namespace BanterBrain_Buddy
             _eventSubWebsocketClient.ChannelSubscriptionMessage += EventSubOnChannelReSubscriber;
             if (_eventSubWebsocketClient.SessionId != null && !TwitchMock)
             {
-                if (_conditions == null)
-                {
-                    //set the global, we need this for the EventSub
-                    _conditions = new()
+                //set the global, we need this for the EventSub
+                _conditions ??= new()
                     {
                     { "broadcaster_user_id", TwitchChannelID },
                              { "user_id", TwitchUserID },
                     };
-                }
                 _bBBlog.Info("Subscribing to new subscription events");
                 await EventSubSubscribe("channel.subscribe", _conditions);
                 _bBBlog.Info("Subscribing to resubscription events");
@@ -241,15 +266,12 @@ namespace BanterBrain_Buddy
             _eventSubWebsocketClient.ChannelSubscriptionGift += EventSubOnChannelSubscriptionGift;
             if (_eventSubWebsocketClient.SessionId != null && !TwitchMock)
             {
-                if (_conditions == null)
-                {
-                    //set the global, we need this for the EventSub
-                    _conditions = new()
+                //set the global, we need this for the EventSub
+                _conditions ??= new()
                     {
                     { "broadcaster_user_id", TwitchChannelID },
                              { "user_id", TwitchUserID },
                     };
-                }
                 _bBBlog.Info("Subscribing to subscription gifts");
                 await EventSubSubscribe("channel.subscription.gift", _conditions);
             }
@@ -263,15 +285,12 @@ namespace BanterBrain_Buddy
             _eventSubWebsocketClient.ChannelCheer += (sender, e) => EventSubOnChannelCheer(e, minbits);
             if (_eventSubWebsocketClient.SessionId != null && !TwitchMock)
             {
-                if (_conditions == null)
-                {
-                    //set the global, we need this for the EventSub
-                    _conditions = new()
+                //set the global, we need this for the EventSub
+                _conditions ??= new()
                     {
                     { "broadcaster_user_id", TwitchChannelID },
                              { "user_id", TwitchUserID },
                     };
-                }
                 _bBBlog.Info("Subscribing to cheers");
                 await EventSubSubscribe("channel.cheer", _conditions);
             }
@@ -285,18 +304,16 @@ namespace BanterBrain_Buddy
             _eventSubWebsocketClient.ChannelPointsCustomRewardRedemptionAdd += (sender, e) => EventSubOnChannelPointRedemption(e, redemptionName);
             if (_eventSubWebsocketClient.SessionId != null && !TwitchMock)
             {
-                if (_conditions == null)
-                {
-                    //set the global, we need this for the EventSub
-                    _conditions = new()
+                //set the global, we need this for the EventSub
+                _conditions ??= new()
                     {
                     { "broadcaster_user_id", TwitchChannelID },
                              { "user_id", TwitchUserID },
                     };
-                }
                 _bBBlog.Info("Subscribing to channel point redemptions");
                 await EventSubSubscribe("channel.channel_points_custom_reward_redemption.add", _conditions);
             }
+            
         }
 
         //if test is validated and Twitch is enabled, we need to check if the access token is still valid every hour
@@ -311,14 +328,15 @@ namespace BanterBrain_Buddy
                 //await Task.Delay(300000);
                 if (!await ValidateAccessToken(TwitchAccessToken))
                 {
-                    //technically sensitive data, so we need to log this as an error, even if its invalid lets not log it
-                    _bBBlog.Error($"Hourly check! Access token {TwitchAccessToken} is invalid, please re-authenticate");
+                    //the token itself is sensitive, never write it to the log
+                    _bBBlog.Error("Hourly check! The access token is invalid, please re-authenticate");
                     return false;
                 }
                 else
-                    _bBBlog.Info($"Hourly check! Access Token {TwitchAccessToken} is validated and valid");
+                    _bBBlog.Info("Hourly check! The access token is validated and valid");
             }
             return true;
+;
         }
 
         public void StopHourlyAccessTokenCheck()
@@ -327,6 +345,7 @@ namespace BanterBrain_Buddy
             TwitchDoAutomatedCheck = false;
         }
 
+        [SupportedOSPlatform("windows10.0.10240")]
         public async Task<bool> GetTwitchAuthToken(List<string> scopes)
         {
             await ReqTwitchAuthToken(scopes);
@@ -334,24 +353,39 @@ namespace BanterBrain_Buddy
         }
 
         //read the config file into globals
-        private static void TwitchReadSettings()
+        private void TwitchReadSettings()
         {
-            if (Properties.Settings.Default.TwitchAuthServerConfig.Length < 1)
+               
+            if (UserSettingsManager.Settings.TwitchAuthServerConfig.Length < 1)
             {
                 _bBBlog.Error("TwitchAuthRedirect not found in Settings this should nto happen so lets use default");
                 TwitchAuthRedirect = "http://localhost:8080";
-                Properties.Settings.Default.TwitchAuthServerConfig = TwitchAuthRedirect;
-                Properties.Settings.Default.Save();
+                UserSettingsManager.Settings.TwitchAuthServerConfig = TwitchAuthRedirect;
+                UserSettingsManager.SaveSettings();
             }
             else
             {
-                TwitchAuthRedirect = Properties.Settings.Default.TwitchAuthServerConfig;
+                TwitchAuthRedirect = UserSettingsManager.Settings.TwitchAuthServerConfig;
             }
 
-            using StreamReader r = new(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + @"\settings.json");
+            //read settings.json from %APPDATA%\BanterBrain (matching SetupConfigFiles) rather than the install
+            //directory, so fresh installs that only have the appdata copy don't throw FileNotFoundException.
+            string settingsPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\BanterBrain\\settings.json";
+            if (!File.Exists(settingsPath))
+            {
+                _bBBlog.Warn("settings.json not found in %APPDATA%\\BanterBrain. Creating a default one.");
+                Directory.CreateDirectory(Path.GetDirectoryName(settingsPath));
+                File.WriteAllText(settingsPath, "{\n  \"TwitchAuthClientId\": \"\"\n}\n");
+            }
+
+            using StreamReader r = new(settingsPath);
             //lets read the file and parse the json safely ;)
-            //need to do error handling if file does not exist
             var JsonData = JsonConvert.DeserializeObject<Dictionary<string, string>>(r.ReadToEnd());
+            if (JsonData == null)
+            {
+                _bBBlog.Error("settings.json was empty or could not be parsed.");
+                return;
+            }
 
             bool test = JsonData.TryGetValue("TwitchAuthClientId", out string tmpVal);
             if (!test)
@@ -371,20 +405,28 @@ namespace BanterBrain_Buddy
         /// <returns>true if token valid, false if invalid</returns>
         public async Task<bool> ValidateAccessToken(string TwAuthToken)
         {
-
-            _gTwitchAPI.Settings.ClientId = TwitchAuthClientId;
-            _gTwitchAPI.Settings.AccessToken = TwAuthToken;
-            var validateTokenTest = await _gTwitchAPI.Auth.ValidateAccessTokenAsync(TwAuthToken);
-            if (validateTokenTest == null)
+            try
             {
-                _bBBlog.Error("Access token is invalid, please re-authenticate");
-                return false;
+                _gTwitchAPI.Settings.ClientId = TwitchAuthClientId;
+                _gTwitchAPI.Settings.AccessToken = TwAuthToken;
+                var validateTokenTest = await _gTwitchAPI.Auth.ValidateAccessTokenAsync(TwAuthToken);
+                if (validateTokenTest == null)
+                {
+                    _bBBlog.Error("Access token is invalid, please re-authenticate");
+                    return false;
+                }
+                else
+                {
+                    _bBBlog.Info("Access Token is validated and valid");
+                    TwitchAccessToken = TwAuthToken;
+                    return true;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                _bBBlog.Info("Access Token is validated and valid");
-                TwitchAccessToken = TwAuthToken;
-                return true;
+                //a network hiccup is not the same as an invalid token but must not crash the caller
+                _bBBlog.Error("Validating the access token failed: " + ex.Message);
+                return false;
             }
         }
 
@@ -505,14 +547,26 @@ namespace BanterBrain_Buddy
                 {
                     _bBBlog.Error("Rate limit exceeded: " + exception.Message);
                     await Task.Delay(10000);
-                    await _gTwitchAPI.Helix.Chat.SendChatMessage(TwitchChannelID, TwitchChatUserID, part, null, TwitchChatAccessToken);
+                    try
+                    {
+                        await _gTwitchAPI.Helix.Chat.SendChatMessage(TwitchChannelID, TwitchChatUserID, part, null, TwitchChatAccessToken);
+                    }
+                    catch (Exception retryException)
+                    {
+                        _bBBlog.Error($"Retry after rate limit failed: {retryException.Message}");
+                    }
                     await Task.Delay(delay);
+                }
+                catch (Exception exception)
+                {
+                    //a failing part must not abort the whole post, and must not crash the calling handler
+                    _bBBlog.Error($"Could not send message part: {exception.Message}");
                 }
             }
         }
 
         //this just splits a message in its seperate parts and puts it in a stringlist
-        private List<string> SplitMessage(string message, int partLength)
+        private static List<string> SplitMessage(string message, int partLength)
         {
             var parts = new List<string>();
             for (int i = 0; i < message.Length; i += partLength)
@@ -527,6 +581,20 @@ namespace BanterBrain_Buddy
             _bBBlog.Info($"Trying to send message: {messageToSend} to channel");
             //we need to send the message to the channel, so we need the channel id and the user id
             //we also need the access token
+            //TwitchLib throws a BadParameterException ("message must be set") on an empty body, which happens
+            //when the LLM call failed and left the output text empty, so bail out before we hit the API.
+            if (string.IsNullOrWhiteSpace(messageToSend))
+            {
+                _bBBlog.Error("Message is empty, nothing to send to channel");
+                return false;
+            }
+            //Twitch does not accept leading/trailing whitespace in a chat message
+            messageToSend = messageToSend.Trim();
+            if (messageToSend.Length == 0)
+            {
+                _bBBlog.Error("Message only contained whitespace, nothing to send to channel");
+                return false;
+            }
             if (TwitchAccessToken == null)
             {
                 _bBBlog.Error("No access token set, cannot send message");
@@ -542,6 +610,16 @@ namespace BanterBrain_Buddy
                 _bBBlog.Error("No user ID set, cannot send message");
                 return false;
             }
+            else if (TwitchChatUserID == null)
+            {
+                _bBBlog.Error("No chat user ID set, cannot send message");
+                return false;
+            }
+            else if (TwitchChatAccessToken == null)
+            {
+                _bBBlog.Error("No chat access token set, cannot send message");
+                return false;
+            }
             _bBBlog.Info($"Sending to channel {TwitchChannelID} from user {TwitchChatUserID}. Message: {messageToSend}");
 
             //if this message is longer than 255 characters we need to split it up
@@ -553,9 +631,10 @@ namespace BanterBrain_Buddy
                     await SendMessageWithDelay(messageToSend, 1000);
                     return true;
                 }
-                catch (TwitchLib.Api.Core.Exceptions.BadRequestException exception)
+                catch (Exception exception)
                 {
-                    _bBBlog.Error("Bad request exception: " + exception.Message);
+                    //never let a chat post bring down the bot, this runs from an async void event handler
+                    _bBBlog.Error($"Could not send split message to channel: {exception.Message}");
                     return false;
                 }
             }
@@ -568,17 +647,26 @@ namespace BanterBrain_Buddy
                     await _gTwitchAPI.Helix.Chat.SendChatMessage(TwitchChannelID, TwitchChatUserID, messageToSend, null, TwitchChatAccessToken);
                     return true;
                 }
-                catch (TwitchLib.Api.Core.Exceptions.BadRequestException exception)
-                {
-                    _bBBlog.Error("Bad request exception: " + exception.Message);
-                    return false;
-                }
                 catch (TwitchLib.Api.Core.Exceptions.TooManyRequestsException exception)
                 {
                     _bBBlog.Error("Rate limit exceeded: " + exception.Message);
                     await Task.Delay(2000);
-                    await _gTwitchAPI.Helix.Chat.SendChatMessage(TwitchChannelID, TwitchChatUserID, messageToSend, null, TwitchChatAccessToken);
-                    return true;
+                    try
+                    {
+                        await _gTwitchAPI.Helix.Chat.SendChatMessage(TwitchChannelID, TwitchChatUserID, messageToSend, null, TwitchChatAccessToken);
+                        return true;
+                    }
+                    catch (Exception retryException)
+                    {
+                        _bBBlog.Error($"Retry after rate limit failed: {retryException.Message}");
+                        return false;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    //Bad request/Bad parameter/Token problems all end up here, log and keep the bot running
+                    _bBBlog.Error($"Could not send message to channel: {exception.Message}");
+                    return false;
                 }
             }
         }
@@ -587,9 +675,21 @@ namespace BanterBrain_Buddy
         /// This is the function that will request the auth token from Twitch
         /// </summary>
         /// <param name="scopes"></param>
-        [System.Runtime.Versioning.SupportedOSPlatform("windows6.1")]
+        [System.Runtime.Versioning.SupportedOSPlatform("windows10.0.10240")]
         private async Task ReqTwitchAuthToken(List<string> scopes)
         {
+            //Guard against a missing or still-templated Client ID. Launching the browser with an invalid
+            //client_id throws a Win32Exception on the background thread below, which would crash the whole
+            //program, so bail out gracefully with a clear message instead.
+            if (string.IsNullOrWhiteSpace(TwitchAuthClientId) || TwitchAuthClientId.Contains("insert clientid"))
+            {
+                _bBBlog.Error("Twitch Client ID is not configured. Enter a valid Client ID in Settings before authorizing.");
+                MessageBox.Show("The Twitch App Client ID is not set (or still the template placeholder).\r\n\r\nOpen Settings and enter a valid Client ID from https://dev.twitch.tv/console/apps, then try again.",
+                    "Twitch Client ID required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                TwitchAuthRequestResult = false;
+                return;
+            }
+
             // create twitch api instance
             _gTwitchAPI.Settings.ClientId = TwitchAuthClientId;
 
@@ -597,7 +697,19 @@ namespace BanterBrain_Buddy
             var server = new TwitchAuthWebserver(TwitchAuthRedirect);
 
             //implicit flow is rather simple compared to client cred
-            var tImplicit = new Thread(() => Process.Start(new ProcessStartInfo($"{GetOAUTHCodeUrl(TwitchAuthClientId, TwitchAuthRedirect, scopes, "Implicit")}") { UseShellExecute = true }));
+            //wrap Process.Start so a failure to launch the browser can't crash the process from this thread
+            string oauthUrl = GetOAUTHCodeUrl(TwitchAuthClientId, TwitchAuthRedirect, scopes, "Implicit");
+            var tImplicit = new Thread(() =>
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo(oauthUrl) { UseShellExecute = true });
+                }
+                catch (Exception ex)
+                {
+                    _bBBlog.Error("Failed to launch browser for Twitch authorization: " + ex.Message);
+                }
+            });
             tImplicit.Start();
 
             var authImplicit = await server.ImplicitListen();
@@ -611,13 +723,24 @@ namespace BanterBrain_Buddy
                 //also save this the global to return
                 TwitchAccessToken = authImplicit.Code;
 
-                // get the auth'd user to test the access token's validity
-                var user = (await _gTwitchAPI.Helix.Users.GetUsersAsync()).Users[0];
-
-                // print out all the data we've got
-                _bBBlog.Info($"Authorization success! User: {user.DisplayName} (id: {user.Id})");
+                // get the auth'd user to test the access token's validity and to grab the account name
+                var users = (await _gTwitchAPI.Helix.Users.GetUsersAsync()).Users;
                 server.Stop();
-                MessageBox.Show($"Authorization success! User: {user.DisplayName}. Remember to log out if you want to authorize the other account also.");
+                if (users != null && users.Length > 0)
+                {
+                    var user = users[0];
+                    //also return this so the Settings UI can fill the "Account Name" box
+                    TwitchAuthorizedUserName = user.DisplayName;
+
+                    // print out all the data we've got
+                    _bBBlog.Info($"Authorization success! User: {user.DisplayName} (id: {user.Id})");
+                    MessageBox.Show($"Authorization success! User: {user.DisplayName}. Remember to log out if you want to authorize the other account also.");
+                }
+                else
+                {
+                    _bBBlog.Error("Authorization succeeded but no user was returned for the token.");
+                    MessageBox.Show("Authorization succeeded and the token was captured, but the account name could not be retrieved.\r\n\r\nPlease enter the Account Name manually.", "Twitch Authorization", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
             }
             else
             {
@@ -630,7 +753,8 @@ namespace BanterBrain_Buddy
         {
             string scopesStr = String.Join("+", scopes);
             string responseType;
-            redirectUri += "/redirect/";
+            //The redirect URI is sent exactly as configured (no extra path appended) so it matches the
+            //OAuth Redirect URL users register in the Twitch console verbatim.
 
             if (string.Equals(OAUTHType, "auth", StringComparison.OrdinalIgnoreCase))
                 responseType = "code";
@@ -653,6 +777,8 @@ namespace BanterBrain_Buddy
 
         public async Task<bool> EventSubStartAsync()
         {
+            //a fresh start means automatic reconnecting is wanted again
+            _eventSubIntentionalStop = false;
             var result = await _eventSubWebsocketClient.ConnectAsync();
             if (result)
             {
@@ -670,6 +796,8 @@ namespace BanterBrain_Buddy
         //mock for testing see https://dev.twitch.tv/docs/cli/websocket-event-command/
         public async Task<bool> EventSubStartAsyncMock()
         {
+            //a fresh start means automatic reconnecting is wanted again
+            _eventSubIntentionalStop = false;
             //we just faking it ;)
             TwitchMock = true;
             var result = await _eventSubWebsocketClient.ConnectAsync(new Uri("ws://127.0.0.1:8080/ws"));
@@ -687,6 +815,8 @@ namespace BanterBrain_Buddy
 
         public async Task EventSubStopAsync()
         {
+            //tell the disconnect handler that this stop is on purpose, no reconnect wanted
+            _eventSubIntentionalStop = true;
             await _eventSubWebsocketClient.DisconnectAsync();
             _bBBlog.Info($"Websocket {_eventSubWebsocketClient.SessionId} manually stopped and disconnected.");
         }
@@ -706,10 +836,67 @@ namespace BanterBrain_Buddy
             await Task.Delay(1);
         }
 
+        //check the message string of twitch messages for a filtered word
+        //if the message contains a filtered word, return true
+        //else return false
+        private bool CheckMessageForFilteredWords(string message)
+        {
+            //if the filter is not enabled, return false cos we dont need to check anything.
+            if (UserSettingsManager.Settings.BadWordFilter == false)
+            {
+                return false;
+            }
 
-        //eventhandler for reading chat messages.
-        //This receives: string command, int delay, bool follower, bool subscriber
-        private async Task EventSubOnChannelChatMessage(ChannelChatMessageArgs e, string command, bool follower, bool subscriber)
+            //cheers and channel point redemptions can arrive without any text
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return false;
+            }
+
+            //load the bad word filter into a list for checking
+            //bad words are stored in a file in the appdata folder and are comma delimited
+            var tmpFile = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\BanterBrain\\WordFilter.txt";
+            var badWords = new List<string>();
+            try
+            {
+                if (File.Exists(tmpFile))
+                {
+                    using StreamReader r = new(tmpFile);
+                    string line;
+                    while ((line = r.ReadLine()) != null)
+                    {
+                        badWords.AddRange(line.Split(','));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _bBBlog.Error("Could not read the word filter file, not filtering: " + ex.Message);
+                return false;
+            }
+            _bBBlog.Debug($"Bad words: {badWords.Count}");
+            //now to see if the message contains any words or sentences found in the badWords list
+            foreach (string word in badWords)
+            {
+                //an empty entry (stray comma in the file) matches EVERY message, skip those
+                if (string.IsNullOrWhiteSpace(word))
+                {
+                    continue;
+                }
+                if (message.Contains(word.Trim()))
+                {
+                    _bBBlog.Info($"Message contains a bad word: {word}, ignoring");
+                    return true;
+                }
+            }
+
+            //when in doubt dont filter!
+            return false;
+        }
+
+            //eventhandler for reading chat messages.
+            //This receives: string command, int delay, bool follower, bool subscriber
+            private async Task EventSubOnChannelChatMessage(ChannelChatMessageArgs e, string command, bool follower, bool subscriber)
         {
             bool tmpFol = follower;
             _bBBlog.Debug($"Chat message websocket {_eventSubWebsocketClient.SessionId}");
@@ -721,7 +908,14 @@ namespace BanterBrain_Buddy
             }
 
             var eventData = e.Notification.Payload.Event;
+
             _bBBlog.Debug($"{eventData.ChatterUserName} said {eventData.Message.Text} in {eventData.BroadcasterUserName}'s chat.");
+            if (CheckMessageForFilteredWords(eventData.Message.Text))
+            {
+                _bBBlog.Info($"{eventData.ChatterUserName} said a bad word, ignoring");
+                return;
+            }
+
             //TODO: check for the command and then trigger the bot if its the right command and delay has been passed since bot was triggered last
             //we need to also check if the user is a follower or subscriber if that is set
             //also we should check when last time bot was triggered
@@ -779,9 +973,9 @@ namespace BanterBrain_Buddy
             await Task.Delay(delay * 1000);
             IsCommandTriggered = false;
             _bBBlog.Debug($"Enabling eventhandler for chatmessage");
-            if (Properties.Settings.Default.DelayFinishToChatcCheckBox)
+            if (UserSettingsManager.Settings.DelayFinishToChatcCheckBox)
             {
-                await SendMessageWithDelay(Properties.Settings.Default.TwitchDelayMessageTextBox, 1000);
+                await SendMessageWithDelay(UserSettingsManager.Settings.TwitchDelayMessageTextBox, 1000);
             }
         }
 
@@ -790,7 +984,15 @@ namespace BanterBrain_Buddy
         {
             _bBBlog.Debug($"Cheer websocket {_eventSubWebsocketClient.SessionId}");
             var eventData = e.Notification.Payload.Event;
+
             _bBBlog.Info($"{eventData.UserName} cheered {eventData.Bits} bits in {eventData.BroadcasterUserName}'s chat with message: {eventData.Message}");
+
+            //check for bad words
+            if (CheckMessageForFilteredWords(eventData.Message))
+            {
+                _bBBlog.Info($"{eventData.UserName} said a bad word, ignoring");
+                return;
+            }
 
             if (eventData.Bits >= minbits)
             {
@@ -816,12 +1018,20 @@ namespace BanterBrain_Buddy
 
             _bBBlog.Debug($"Subscriber websocket {_eventSubWebsocketClient.SessionId}");
             var eventData = e.Notification.Payload.Event;
+
             //eventdata can be null, so we need to check for that
             var message = "";
             if (eventData.Message != null)
                 message = eventData.Message.Text;
 
             _bBBlog.Info($"{eventData.UserName} re-subscribed to {eventData.BroadcasterUserName} for {eventData.CumulativeMonths} months with message {eventData.Message}");
+
+            //check for bad words   
+            if (CheckMessageForFilteredWords(message))
+            {
+                _bBBlog.Info($"{eventData.UserName} said a bad word, ignoring");
+                return;
+            }
 
             if (OnESubReSubscribe == null)
             {
@@ -856,7 +1066,7 @@ namespace BanterBrain_Buddy
 
             _bBBlog.Debug($"Subscriber websocket {_eventSubWebsocketClient.SessionId}");
             var eventData = e.Notification.Payload.Event;
-            var tierSub = int.Parse(eventData.Tier) / 1000;
+            var tierSub = int.TryParse(eventData.Tier, out var parsedTier) ? parsedTier / 1000 : 1;
             _bBBlog.Info($"{eventData.UserName} gifted {eventData.Total} tier {tierSub} subscription(s) to a total of {eventData.CumulativeTotal}");
             if (OnESubSubscriptionGift == null)
             {
@@ -874,7 +1084,16 @@ namespace BanterBrain_Buddy
 
             _bBBlog.Debug($"Subscriber websocket {_eventSubWebsocketClient.SessionId}");
             var eventData = e.Notification.Payload.Event;
+
             _bBBlog.Info($"{eventData.UserName} used {redemptionName} redeemed {eventData.Reward.Title} with message {eventData.UserInput}");
+
+            //check for bad words
+            if (CheckMessageForFilteredWords(eventData.UserInput))
+            {
+                _bBBlog.Info($"{eventData.UserName} said a bad word, ignoring");
+                return;
+            }
+
             if (OnESubChannelPointRedemption == null)
             {
                 _bBBlog.Debug("Redemption trigger is null, no eventhandler set. Cannot continue");
@@ -964,7 +1183,8 @@ namespace BanterBrain_Buddy
                 foreach (var sub in response.Subscriptions)
                 {
                     _bBBlog.Info($"Sub Type: {sub.Type} is {sub.Status} with {sub.Id}");
-                    _eventSubIllist.Add(type, sub.Id);
+                    //indexer instead of Add, re-subscribing to the same type would throw on a duplicate key
+                    _eventSubIllist[type] = sub.Id;
                 };
                 foreach (var item in _eventSubIllist)
                 {
@@ -1044,8 +1264,9 @@ namespace BanterBrain_Buddy
         {
             _bBBlog.Error($"Websocket {_eventSubWebsocketClient.SessionId} disconnected.");
 
-            // Don't do this in production. You should implement a better reconnect strategy
-            while (!await _eventSubWebsocketClient.ReconnectAsync())
+            //when the user stopped EventSub on purpose we must not reconnect in a loop, the old
+            //"while (!ReconnectAsync)" never ended and burned CPU even after an intentional stop
+            while (!_eventSubIntentionalStop && !await _eventSubWebsocketClient.ReconnectAsync())
             {
                 await Task.Delay(1000);
             }

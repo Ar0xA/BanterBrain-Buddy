@@ -20,8 +20,9 @@ namespace BanterBrain_Buddy
         private static readonly log4net.ILog _bBBlog = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         private TwitchLLMResponseLanguage TwitchLLMLanguage;
         private bool TwitchLLMTextChanged = false;
+        private SettingsManager UserSettingsManager = SettingsManager.Instance;
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         public TwitchLLMCustomLanguage()
         {
 
@@ -30,7 +31,7 @@ namespace BanterBrain_Buddy
 
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void DisableEventHandlers()
         {
             _bBBlog.Debug("Disabling event handlers for text changes");
@@ -51,7 +52,7 @@ namespace BanterBrain_Buddy
             ChatMessageIntermediaryTextBox.TextChanged -= ChatMessageIntermediaryTextBox_TextChanged;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void EnableEventHandlers()
         {
             _bBBlog.Debug("Enabling event handlers for text changes");
@@ -71,7 +72,7 @@ namespace BanterBrain_Buddy
             ChatMessageIntermediaryTextBox.TextChanged += ChatMessageIntermediaryTextBox_TextChanged;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void LoadClassIntoText()
         {
             _bBBlog.Info($"Twitch LLM language file loaded with language: {TwitchLLMLanguage.Language}");
@@ -93,7 +94,7 @@ namespace BanterBrain_Buddy
             ChatMessageIntermediaryTextBox.Text = TwitchLLMLanguage.ChatMessageResponseLLM;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchLLMCustomLanguage_Shown(object sender, EventArgs e)
         {
             _bBBlog.Info("Showing custom TwitchLLM language file, loading current settings");
@@ -101,18 +102,37 @@ namespace BanterBrain_Buddy
             var tmpFile = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\BanterBrain\\CustomTwitchLLMLanguage.json";
             if (!File.Exists(tmpFile))
             {
-                _bBBlog.Error($"Twitch LLM language {Properties.Settings.Default.TwitchLLMLanguageComboBox} file not found, Error!");
+                //create it from English so first use does not crash
+                _bBBlog.Debug("Twitch LLM custom language file not found, creating it from English");
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(tmpFile));
+                    var sourcefolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                    var englishFile = sourcefolder + "\\TwitchLLMLanguageFiles\\English.json";
+                    if (File.Exists(englishFile))
+                        File.Copy(englishFile, tmpFile);
+                    else
+                        _bBBlog.Error($"English language template {englishFile} not found, Error!");
+                }
+                catch (Exception ex)
+                {
+                    _bBBlog.Error("Could not create custom Twitch LLM language file: " + ex.Message);
+                }
             }
 
-            _bBBlog.Debug($"Twitch LLM language {Properties.Settings.Default.TwitchLLMLanguageComboBox} file found, loading it.");
+            if (!File.Exists(tmpFile))
+            {
+                _bBBlog.Error($"Twitch LLM language {UserSettingsManager.Settings.TwitchLLMLanguageComboBox} file not found, Error!");
+                MessageBox.Show("Custom language file not found and could not be created from the English template.", "Twitch LLM Language", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                EnableEventHandlers();
+                return;
+            }
+
+            _bBBlog.Debug($"Twitch LLM language {UserSettingsManager.Settings.TwitchLLMLanguageComboBox} file found, loading it.");
             using var sr = new StreamReader(tmpFile);
             var tmpString = sr.ReadToEnd();
 
-            if (TwitchLLMLanguage == null)
-            {
-                TwitchLLMLanguage = new();
-            }
-            TwitchLLMLanguage = JsonConvert.DeserializeObject<TwitchLLMResponseLanguage>(tmpString);
+            TwitchLLMLanguage = JsonConvert.DeserializeObject<TwitchLLMResponseLanguage>(tmpString) ?? new();
 
             LoadClassIntoText();
 
@@ -187,12 +207,19 @@ namespace BanterBrain_Buddy
             TwitchLLMTextChanged = true;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void SaveCurrentLanguage()
         {
             var result = MessageBox.Show(" Do you want to save the custom language?", "Save Custom Language Settings", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
             if (result == DialogResult.Yes)
             {
+                //when the initial load failed the class is null, saving would crash the FormClosing handler
+                if (TwitchLLMLanguage == null)
+                {
+                    _bBBlog.Error("No language loaded, cannot save the custom language");
+                    TwitchLLMTextChanged = false;
+                    return;
+                }
                 //we save the current language back into the class and then file
                 _bBBlog.Info("Saving current language settings");
                 TwitchLLMLanguage.CheerDefaultNoMessage = MinBitsNoMessageTextBox.Text;
@@ -212,31 +239,42 @@ namespace BanterBrain_Buddy
 
                 //save the class back to the custom language file
                 var tmpFile = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\BanterBrain\\CustomTwitchLLMLanguage.json";
-                _bBBlog.Debug($"Twitch LLM language {Properties.Settings.Default.TwitchLLMLanguageComboBox} file found, saving it.");
-                using var sw = new StreamWriter(tmpFile);
-                sw.Write(JsonConvert.SerializeObject(TwitchLLMLanguage));
+                _bBBlog.Debug($"Twitch LLM language {UserSettingsManager.Settings.TwitchLLMLanguageComboBox} file found, saving it.");
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(tmpFile));
+                    using var sw = new StreamWriter(tmpFile);
+                    sw.Write(JsonConvert.SerializeObject(TwitchLLMLanguage));
+                }
+                catch (Exception ex)
+                {
+                    //a locked or unwritable file must not throw out of the closing event
+                    _bBBlog.Error("Could not save the custom language file: " + ex.Message);
+                    MessageBox.Show("Could not save the custom language file: " + ex.Message, "Twitch LLM Language", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
             TwitchLLMTextChanged = false;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchLLMLoadLanguage()
         {
             _bBBlog.Info("Current language has not been changed, loading new language");
             string sourcefolder = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            string tmpFile = "";
+            string tmpFile;
 
             tmpFile = sourcefolder + $"\\TwitchLLMLanguageFiles\\{TwitchLLMLanguageComboBox.Text}.json";
+            if (!File.Exists(tmpFile))
+            {
+                _bBBlog.Error($"Twitch LLM language {TwitchLLMLanguageComboBox.Text} file not found at {tmpFile}, Error!");
+                MessageBox.Show($"Language file for {TwitchLLMLanguageComboBox.Text} was not found.", "Twitch LLM Language", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
             _bBBlog.Debug($"Twitch LLM language {TwitchLLMLanguageComboBox.Text} file found, loading it.");
             using var sr = new StreamReader(tmpFile);
             var tmpString = sr.ReadToEnd();
-            //if this is the first time make the new class
-            if (TwitchLLMLanguage == null)
-            {
-                TwitchLLMLanguage = new();
-            }
 
-            TwitchLLMLanguage = JsonConvert.DeserializeObject<TwitchLLMResponseLanguage>(tmpString);
+            TwitchLLMLanguage = JsonConvert.DeserializeObject<TwitchLLMResponseLanguage>(tmpString) ?? new();
             _bBBlog.Info($"Twitch LLM language file loaded with language: {TwitchLLMLanguage.Language}");
             DisableEventHandlers();
             LoadClassIntoText();
@@ -244,7 +282,7 @@ namespace BanterBrain_Buddy
             TwitchLLMTextChanged = true;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchLLMLanguageComboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             //be sure that the selected language isnt empty
@@ -265,7 +303,7 @@ namespace BanterBrain_Buddy
             TwitchLLMLoadLanguage();
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchLLMCustomLanguage_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (TwitchLLMTextChanged)

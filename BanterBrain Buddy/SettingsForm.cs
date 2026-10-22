@@ -1,6 +1,5 @@
 ﻿using NAudio.CoreAudioApi;
 using Newtonsoft.Json;
-using OpenAI_API;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -38,10 +37,30 @@ namespace BanterBrain_Buddy
         private List<string> _elevenLabsVoicesList;
         private int previousPersonaSelectedIndex;
 
-        [SupportedOSPlatform("windows6.1")]
+        private SettingsManager UserSettingsManager = SettingsManager.Instance;
+
+        //safe parses for textbox values, the test-voice path runs from an async void click handler so a bad value must never throw
+        private static int ParseIntOrDefault(string value, int defaultValue)
+        {
+            if (int.TryParse(value, out var result))
+                return result;
+            _bBBlog.Warn($"Could not parse \"{value}\" to an int, using default {defaultValue}");
+            return defaultValue;
+        }
+
+        private static float ParseFloatOrDefault(string value, float defaultValue)
+        {
+            if (float.TryParse(value, out var result))
+                return result;
+            _bBBlog.Warn($"Could not parse \"{value}\" to a float, using default {defaultValue}");
+            return defaultValue;
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
         public SettingsForm()
         {
             InitializeComponent();
+            SetupTwitchKeyInfoLinks();
             DisablePersonaEventHandlers();
             GetAudioDevices();
             GetInstalledNativeSpeecRecognitionCultures();
@@ -61,7 +80,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void GetInstalledNativeSpeecRecognitionCultures()
         {
             foreach (RecognizerInfo config in SpeechRecognitionEngine.InstalledRecognizers())
@@ -77,7 +96,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         //fill the audio input and output list boxes
         public void GetAudioDevices()
         {
@@ -92,7 +111,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void DisablePersonaEventHandlers()
         {
             _bBBlog.Debug("Disabling Persona screen eventhandlers");
@@ -107,10 +126,10 @@ namespace BanterBrain_Buddy
             VolumeTrackBar.ValueChanged -= VolumeTrackBar_ValueChanged;
             RateTrackBar.ValueChanged -= RateTrackBar_ValueChanged;
             PitchTrackBar.ValueChanged -= PitchTrackBar_ValueChanged;
-            
+
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void EnablePersonaEventHandlers(
             )
         {
@@ -128,14 +147,14 @@ namespace BanterBrain_Buddy
             PitchTrackBar.ValueChanged += PitchTrackBar_ValueChanged;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TreeView1_AfterSelect(object sender, TreeViewEventArgs e)
         {
             ShowPanels(e.Node.Name);
         }
 
         //show panels based on selected node and hide the others
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void PanelVisible(string panelName)
         {
             foreach (var panel in splitContainer1.Panel2.Controls.OfType<Panel>())
@@ -152,7 +171,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void ShowPanels(string selectedNode)
         {
 
@@ -185,6 +204,9 @@ namespace BanterBrain_Buddy
                 case "OllamaLLM":
                     PanelVisible(OllamaPanel.Name);
                     break;
+                case "GroqLLM":
+                    PanelVisible(GroqPanel.Name);
+                    break;
                 case "StreamingSettings":
                     PanelVisible(TwitchPanel.Name);
                     break;
@@ -205,50 +227,240 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        //The Twitch application Client ID is stored in settings.json (separate from usersettings.json)
+        //because TwitchAPIESub reads it from there. These helpers read/write just that key while
+        //preserving any other keys already present in the file.
+        private static string TwitchSettingsJsonPath =>
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + "\\BanterBrain\\settings.json";
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private string ReadTwitchClientId()
+        {
+            try
+            {
+                if (File.Exists(TwitchSettingsJsonPath))
+                {
+                    var data = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(TwitchSettingsJsonPath));
+                    if (data != null && data.TryGetValue("TwitchAuthClientId", out string clientId)
+                        && !string.IsNullOrWhiteSpace(clientId) && !clientId.Contains("insert clientid"))
+                    {
+                        return clientId;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _bBBlog.Error("ReadTwitchClientId failed: " + ex.Message);
+            }
+            return "";
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void WriteTwitchClientId(string clientId)
+        {
+            try
+            {
+                string folder = Path.GetDirectoryName(TwitchSettingsJsonPath);
+                if (!Directory.Exists(folder))
+                    Directory.CreateDirectory(folder);
+
+                Dictionary<string, string> data = null;
+                if (File.Exists(TwitchSettingsJsonPath))
+                {
+                    try { data = JsonConvert.DeserializeObject<Dictionary<string, string>>(File.ReadAllText(TwitchSettingsJsonPath)); }
+                    catch { data = null; }
+                }
+                data ??= new Dictionary<string, string>();
+                data["TwitchAuthClientId"] = clientId;
+
+                File.WriteAllText(TwitchSettingsJsonPath, JsonConvert.SerializeObject(data, Formatting.Indented));
+                _bBBlog.Info("Saved TwitchAuthClientId to settings.json");
+            }
+            catch (Exception ex)
+            {
+                _bBBlog.Error("WriteTwitchClientId failed: " + ex.Message);
+            }
+        }
+
+        //Persist the Client ID typed in the Settings UI to settings.json immediately, so the user does
+        //not have to close the window for the value to be written.
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void SaveClientIdButton_Click(object sender, EventArgs e)
+        {
+            string clientId = TwitchClientIdTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(clientId) || clientId.Contains("insert clientid"))
+            {
+                _bBBlog.Warn("Save Client ID clicked with an empty or placeholder value.");
+                MessageBox.Show("Please enter a valid Twitch App Client ID before saving.\r\n\r\nYou can get one from https://dev.twitch.tv/console/apps",
+                    "Twitch Client ID required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            try
+            {
+                WriteTwitchClientId(clientId);
+                MessageBox.Show("Twitch Client ID saved to settings.json.", "Saved",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                _bBBlog.Error("SaveClientIdButton_Click failed: " + ex.Message);
+                MessageBox.Show("Failed to save the Twitch Client ID: " + ex.Message, "Save Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private const string TwitchDevPortalUrl = "https://dev.twitch.tv/console/apps";
+
+        //The instructions label is a LinkLabel; register the developer portal URL as an actual clickable
+        //link spanning its occurrence in the text (WinForms LinkLabel does not auto-detect URLs).
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void SetupTwitchKeyInfoLinks()
+        {
+            int idx = TwitchKeyInfoLabel.Text.IndexOf(TwitchDevPortalUrl, StringComparison.Ordinal);
+            if (idx >= 0)
+            {
+                TwitchKeyInfoLabel.Links.Clear();
+                TwitchKeyInfoLabel.Links.Add(idx, TwitchDevPortalUrl.Length, TwitchDevPortalUrl);
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void TwitchKeyInfoLabel_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
+        {
+            try
+            {
+                if (e.Link?.LinkData is string url && !string.IsNullOrWhiteSpace(url))
+                {
+                    Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                }
+            }
+            catch (Exception ex)
+            {
+                _bBBlog.Error("Failed to open Twitch key info link: " + ex.Message);
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
         private void LoadSettings()
         {
             _bBBlog.Info("Loading settings");
-            //TwitchUsername.Text = Properties.Settings.Default.TwitchUsername;
-            TwitchBroadcasterAccessToken.Text = Properties.Settings.Default.TwitchAccessToken;
-            TwitchBroadcasterChannel.Text = Properties.Settings.Default.TwitchChannel;
-            TwitchBotAuthKey.Text = Properties.Settings.Default.TwitchBotAuthKey;
-            TwitchBotName.Text = Properties.Settings.Default.TwitchBotName;
-            TwitchSendTextCheckBox.Checked = Properties.Settings.Default.TwitchSendTextCheckBox;
-            SoundInputDevices.SelectedIndex = SoundInputDevices.FindStringExact(Properties.Settings.Default.VoiceInput);
-            MicrophoneHotkeyEditbox.Text = Properties.Settings.Default.PTTHotkey;
-            TTSAudioOutputComboBox.SelectedIndex = TTSAudioOutputComboBox.FindStringExact(Properties.Settings.Default.TTSAudioOutput);
-            AzureAPIKeyTextBox.Text = Properties.Settings.Default.AzureAPIKeyTextBox;
-            AzureRegionTextBox.Text = Properties.Settings.Default.AzureRegionTextBox;
-            AzureLanguageComboBox.Text = Properties.Settings.Default.AzureLanguageComboBox;
-            GPTModelComboBox.SelectedIndex = GPTModelComboBox.FindStringExact(Properties.Settings.Default.GPTModel);
-            GPTAPIKeyTextBox.Text = Properties.Settings.Default.GPTAPIKey;
-            GPTMaxTokensTextBox.Text = Properties.Settings.Default.GPTMaxTokens.ToString();
+            
+            _bBBlog.Debug("Loading settings from new settings: " + UserSettingsManager.Settings.OllamaURI);
+            //TwitchUsername.Text = UserSettingsManager.Settings.TwitchUsername;
+            TwitchBroadcasterAccessToken.Text = UserSettingsManager.Settings.TwitchAccessToken;
+            TwitchBroadcasterChannel.Text = UserSettingsManager.Settings.TwitchChannel;
+            TwitchBotAuthKey.Text = UserSettingsManager.Settings.TwitchBotAuthKey;
+            TwitchBotName.Text = UserSettingsManager.Settings.TwitchBotName;
+            TwitchSendTextCheckBox.Checked = UserSettingsManager.Settings.TwitchSendTextCheckBox;
+            SoundInputDevices.SelectedIndex = SoundInputDevices.FindStringExact(UserSettingsManager.Settings.VoiceInput);
+            MicrophoneHotkeyEditbox.Text = UserSettingsManager.Settings.PTTHotkey;
+            TTSAudioOutputComboBox.SelectedIndex = TTSAudioOutputComboBox.FindStringExact(UserSettingsManager.Settings.TTSAudioOutput);
+            AzureAPIKeyTextBox.Text = UserSettingsManager.Settings.AzureAPIKeyTextBox;
+            AzureRegionTextBox.Text = UserSettingsManager.Settings.AzureRegionTextBox;
+            AzureLanguageComboBox.Text = UserSettingsManager.Settings.AzureLanguageComboBox;
+            //restore the model list from the last fetch, so the selector stays filled across restarts
+            if (UserSettingsManager.Settings.GPTModelListCache != null && UserSettingsManager.Settings.GPTModelListCache.Count > 0)
+            {
+                GPTModelComboBox.Items.Clear();
+                foreach (string cachedModel in UserSettingsManager.Settings.GPTModelListCache)
+                {
+                    GPTModelComboBox.Items.Add(cachedModel);
+                }
+            }
+            GPTModelComboBox.SelectedIndex = GPTModelComboBox.FindStringExact(UserSettingsManager.Settings.GPTModel);
+            //older settings files may still contain a legacy model name that is no longer in the list
+            if (GPTModelComboBox.SelectedIndex < 0)
+            {
+                _bBBlog.Info("Saved GPT model not found in list, selecting default");
+                GPTModelComboBox.SelectedIndex = 0;
+            }
+            GPTAPIKeyTextBox.Text = UserSettingsManager.Settings.GPTAPIKey;
+            GPTMaxTokensTextBox.Text = UserSettingsManager.Settings.GPTMaxTokens.ToString();
             if (GPTMaxTokensTextBox.Text.Length < 1)
                 GPTMaxTokensTextBox.Text = "100";
-            GPTTemperatureTextBox.Text = Properties.Settings.Default.GPTTemperature.ToString();
-            ElevenlabsAPIKeyTextBox.Text = Properties.Settings.Default.ElevenLabsAPIkey;
-            OllamaModelsComboBox.SelectedIndex = OllamaModelsComboBox.FindStringExact(Properties.Settings.Default.OllamaSelectedModel);
-            OllamaResponseLengthComboBox.SelectedIndex = OllamaResponseLengthComboBox.FindStringExact(Properties.Settings.Default.OllamaResponseLengthComboBox);
-            OllamaURITextBox.Text = Properties.Settings.Default.OllamaURI;
-            UseOllamaLLMCheckBox.Checked = Properties.Settings.Default.UseOllamaLLMCheckBox;
-            TwitchAuthServerConfig.SelectedIndex = TwitchAuthServerConfig.FindStringExact(Properties.Settings.Default.TwitchAuthServerConfig);
+            GPTTemperatureTextBox.Text = UserSettingsManager.Settings.GPTTemperature.ToString();
+            //Groq: older settings files have no values for these, stay null-safe and fall back to defaults
+            GroqAPIKeyTextBox.Text = UserSettingsManager.Settings.GroqAPIKey ?? "";
+            //restore the model list from the last fetch, so the selector stays filled across restarts
+            if (UserSettingsManager.Settings.GroqModelListCache != null && UserSettingsManager.Settings.GroqModelListCache.Count > 0)
+            {
+                GroqModelComboBox.Items.Clear();
+                foreach (string cachedModel in UserSettingsManager.Settings.GroqModelListCache)
+                {
+                    GroqModelComboBox.Items.Add(cachedModel);
+                }
+            }
+            if (string.IsNullOrEmpty(UserSettingsManager.Settings.GroqModel))
+            {
+                _bBBlog.Info("No Groq model set, using the built-in defaults");
+                GroqModelComboBox.SelectedIndex = 0;
+                GroqTemperatureTextBox.Text = "0.5";
+                GroqMaxTokensTextBox.Text = "100";
+            }
+            else
+            {
+                GroqModelComboBox.SelectedIndex = GroqModelComboBox.FindStringExact(UserSettingsManager.Settings.GroqModel);
+                //a model loaded from the Groq API is not in the built-in list
+                if (GroqModelComboBox.SelectedIndex < 0)
+                    GroqModelComboBox.SelectedIndex = 0;
+                GroqTemperatureTextBox.Text = UserSettingsManager.Settings.GroqTemperature.ToString();
+                GroqMaxTokensTextBox.Text = UserSettingsManager.Settings.GroqMaxTokens.ToString();
+            }
+            //show the levels cached for the selected model first, a saved effort like "Xhigh" only
+            //exists in that list and would silently fall back to Auto when it is applied afterwards
+            ApplyCachedGroqReasoningLevels(GroqModelComboBox.Text);
+            //empty effort means "Auto (model default)"
+            GroqReasoningComboBox.SelectedIndex = GroqReasoningComboBox.FindStringExact(UserSettingsManager.Settings.GroqReasoningEffortComboBox ?? "");
+            if (GroqReasoningComboBox.SelectedIndex < 0)
+            {
+                GroqReasoningComboBox.SelectedIndex = 0;
+            }
+            ElevenlabsAPIKeyTextBox.Text = UserSettingsManager.Settings.ElevenLabsAPIkey;
+            ElevenLabsModelComboBox.SelectedIndex = ElevenLabsModelComboBox.FindStringExact(UserSettingsManager.Settings.ElevenLabsModel);
+            if (ElevenLabsModelComboBox.SelectedIndex == -1)
+                ElevenLabsModelComboBox.SelectedIndex = 0;
+            OllamaModelsComboBox.SelectedIndex = OllamaModelsComboBox.FindStringExact(UserSettingsManager.Settings.OllamaSelectedModel);
+            OllamaResponseLengthComboBox.SelectedIndex = OllamaResponseLengthComboBox.FindStringExact(UserSettingsManager.Settings.OllamaResponseLengthComboBox);
+            OllamaURITextBox.Text = UserSettingsManager.Settings.OllamaURI;
+            UseOllamaLLMCheckBox.Checked = UserSettingsManager.Settings.UseOllamaLLMCheckBox;
+            //stored as "thinking on/off" like the OpenAI checkbox this is shown inverted as "disable reasoning"
+            OllamaNoReasoningCheckBox.Checked = !UserSettingsManager.Settings.OllamaThinkingCheckBox;
+            //older settings files have no value for this, 0 means "use the Ollama server default"
+            OllamaContextTokensTextBox.Text = (UserSettingsManager.Settings.OllamaContextTokens > 0 ? UserSettingsManager.Settings.OllamaContextTokens : 0).ToString();
+            //the reasoning effort dropdown replaced the old disable-reasoning checkbox, a checked
+            //box from an older settings file migrates to the lowest effort
+            string reasoningEffort = UserSettingsManager.Settings.GPTReasoningEffortComboBox;
+            if (string.IsNullOrEmpty(reasoningEffort) && UserSettingsManager.Settings.GPTNoReasoningCheckBox)
+            {
+                reasoningEffort = "Minimal";
+            }
+            //restore the levels probed earlier for the selected model, so the effort selector is
+            //filled without pressing Load levels again
+            ApplyCachedReasoningLevels(GPTModelComboBox.Text);
+            GPTReasoningComboBox.SelectedIndex = GPTReasoningComboBox.FindStringExact(reasoningEffort);
+            if (GPTReasoningComboBox.SelectedIndex < 0)
+            {
+                GPTReasoningComboBox.SelectedIndex = 0;
+            }
+            TwitchAuthServerConfig.SelectedIndex = TwitchAuthServerConfig.FindStringExact(UserSettingsManager.Settings.TwitchAuthServerConfig);
+            //Twitch App Client ID is stored in settings.json, load it into the textbox
+            TwitchClientIdTextBox.Text = ReadTwitchClientId();
 
-            WebsourceServerEnable.Checked = Properties.Settings.Default.WebsourceServerEnable;
+            WebsourceServerEnable.Checked = UserSettingsManager.Settings.WebsourceServerEnable;
             //if empty set default
-            if (Properties.Settings.Default.TwitchAuthServerConfig.Length < 1)
+            if (UserSettingsManager.Settings.TwitchAuthServerConfig.Length < 1)
             {
                 TwitchAuthServerConfig.Text = "http://localhost:8080";
             }
-            WebsourceServer.Text = Properties.Settings.Default.WebsourceServer;
+            WebsourceServer.Text = UserSettingsManager.Settings.WebsourceServer;
             //if empty set default
-            if (Properties.Settings.Default.WebsourceServer.Length < 1)
+            if (UserSettingsManager.Settings.WebsourceServer.Length < 1)
             {
                 WebsourceServer.Text = "http://localhost:9138";
             }
-            if (Properties.Settings.Default.WhisperSpeechRecognitionComboBox.Length > 1)
+            if (UserSettingsManager.Settings.WhisperSpeechRecognitionComboBox.Length > 1)
             {
-                WhisperSpeechRecognitionComboBox.SelectedIndex = WhisperSpeechRecognitionComboBox.FindStringExact(Properties.Settings.Default.WhisperSpeechRecognitionComboBox);
+                WhisperSpeechRecognitionComboBox.SelectedIndex = WhisperSpeechRecognitionComboBox.FindStringExact(UserSettingsManager.Settings.WhisperSpeechRecognitionComboBox);
             }
             else
             {
@@ -257,9 +469,9 @@ namespace BanterBrain_Buddy
                 WhisperSpeechRecognitionComboBox.SelectedIndex = WhisperSpeechRecognitionComboBox.FindStringExact("English");
             }
 
-            if (Properties.Settings.Default.NativeSpeechRecognitionLanguageComboBox.Length > 1)
+            if (UserSettingsManager.Settings.NativeSpeechRecognitionLanguageComboBox.Length > 1)
             {
-                NativeSpeechRecognitionLanguageComboBox.SelectedIndex = NativeSpeechRecognitionLanguageComboBox.FindStringExact(Properties.Settings.Default.NativeSpeechRecognitionLanguageComboBox);
+                NativeSpeechRecognitionLanguageComboBox.SelectedIndex = NativeSpeechRecognitionLanguageComboBox.FindStringExact(UserSettingsManager.Settings.NativeSpeechRecognitionLanguageComboBox);
             }
             else
             {
@@ -270,7 +482,7 @@ namespace BanterBrain_Buddy
 
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void SettingsForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             if (personaEdited)
@@ -287,53 +499,70 @@ namespace BanterBrain_Buddy
             _bBBlog.Info("Settings form closing, saving settings");
             //only save if theres actual data to be saved
             //these can be empty
-            Properties.Settings.Default.TwitchBotName = TwitchBotName.Text;
-            Properties.Settings.Default.TwitchBotAuthKey = TwitchBotAuthKey.Text;
+            UserSettingsManager.Settings.TwitchBotName = TwitchBotName.Text;
+            UserSettingsManager.Settings.TwitchBotAuthKey = TwitchBotAuthKey.Text;
+            //persist the Twitch App Client ID to settings.json if one was entered
+            if (TwitchClientIdTextBox.Text.Length > 0)
+                WriteTwitchClientId(TwitchClientIdTextBox.Text);
             //these cannot be empty
             if (TwitchBroadcasterAccessToken.Text.Length > 0)
-                Properties.Settings.Default.TwitchAccessToken = TwitchBroadcasterAccessToken.Text;
+                UserSettingsManager.Settings.TwitchAccessToken = TwitchBroadcasterAccessToken.Text;
             if (TwitchBroadcasterChannel.Text.Length > 0)
-                Properties.Settings.Default.TwitchChannel = TwitchBroadcasterChannel.Text;
-            Properties.Settings.Default.TwitchSendTextCheckBox = TwitchSendTextCheckBox.Checked;
+                UserSettingsManager.Settings.TwitchChannel = TwitchBroadcasterChannel.Text;
+            UserSettingsManager.Settings.TwitchSendTextCheckBox = TwitchSendTextCheckBox.Checked;
             if (SoundInputDevices.Text.Length > 0)
-                Properties.Settings.Default.VoiceInput = SoundInputDevices.Text;
+                UserSettingsManager.Settings.VoiceInput = SoundInputDevices.Text;
             if (MicrophoneHotkeyEditbox.Text.Length > 0)
-                Properties.Settings.Default.PTTHotkey = MicrophoneHotkeyEditbox.Text;
+                UserSettingsManager.Settings.PTTHotkey = MicrophoneHotkeyEditbox.Text;
             if (TTSAudioOutputComboBox.Text.Length > 0)
-                Properties.Settings.Default.TTSAudioOutput = TTSAudioOutputComboBox.Text;
+                UserSettingsManager.Settings.TTSAudioOutput = TTSAudioOutputComboBox.Text;
             if (AzureAPIKeyTextBox.Text.Length > 0)
-                Properties.Settings.Default.AzureAPIKeyTextBox = AzureAPIKeyTextBox.Text;
+                UserSettingsManager.Settings.AzureAPIKeyTextBox = AzureAPIKeyTextBox.Text;
             if (AzureRegionTextBox.Text.Length > 0)
-                Properties.Settings.Default.AzureRegionTextBox = AzureRegionTextBox.Text;
+                UserSettingsManager.Settings.AzureRegionTextBox = AzureRegionTextBox.Text;
             if (AzureLanguageComboBox.Text.Length > 0)
-                Properties.Settings.Default.AzureLanguageComboBox = AzureLanguageComboBox.Text;
+                UserSettingsManager.Settings.AzureLanguageComboBox = AzureLanguageComboBox.Text;
             if (GPTModelComboBox.Text.Length > 0)
-                Properties.Settings.Default.GPTModel = GPTModelComboBox.Text;
+                UserSettingsManager.Settings.GPTModel = GPTModelComboBox.Text;
             if (GPTAPIKeyTextBox.Text.Length > 0)
-                Properties.Settings.Default.GPTAPIKey = GPTAPIKeyTextBox.Text;
+                UserSettingsManager.Settings.GPTAPIKey = GPTAPIKeyTextBox.Text;
             if (GPTMaxTokensTextBox.Text.Length > 0)
-                Properties.Settings.Default.GPTMaxTokens = int.Parse(GPTMaxTokensTextBox.Text);
+                UserSettingsManager.Settings.GPTMaxTokens = ParseIntOrDefault(GPTMaxTokensTextBox.Text, UserSettingsManager.Settings.GPTMaxTokens);
             if (GPTTemperatureTextBox.Text.Length > 0)
-                Properties.Settings.Default.GPTTemperature = float.Parse(GPTTemperatureTextBox.Text);
+                UserSettingsManager.Settings.GPTTemperature = ParseFloatOrDefault(GPTTemperatureTextBox.Text, UserSettingsManager.Settings.GPTTemperature);
             if (ElevenlabsAPIKeyTextBox.Text.Length > 0)
-                Properties.Settings.Default.ElevenLabsAPIkey = ElevenlabsAPIKeyTextBox.Text;
+                UserSettingsManager.Settings.ElevenLabsAPIkey = ElevenlabsAPIKeyTextBox.Text;
             if (OllamaModelsComboBox.Text.Length > 0)
-                Properties.Settings.Default.OllamaSelectedModel = OllamaModelsComboBox.Text;
+                UserSettingsManager.Settings.OllamaSelectedModel = OllamaModelsComboBox.Text;
             if (OllamaResponseLengthComboBox.Text.Length > 0)
-                Properties.Settings.Default.OllamaResponseLengthComboBox = OllamaResponseLengthComboBox.Text;
+                UserSettingsManager.Settings.OllamaResponseLengthComboBox = OllamaResponseLengthComboBox.Text;
             if (OllamaURITextBox.Text.Length > 0)
-                Properties.Settings.Default.OllamaURI = OllamaURITextBox.Text;
+                UserSettingsManager.Settings.OllamaURI = OllamaURITextBox.Text;
+            if (OllamaContextTokensTextBox.Text.Length > 0)
+                UserSettingsManager.Settings.OllamaContextTokens = ParseIntOrDefault(OllamaContextTokensTextBox.Text, UserSettingsManager.Settings.OllamaContextTokens);
+            if (GroqModelComboBox.Text.Length > 0)
+                UserSettingsManager.Settings.GroqModel = GroqModelComboBox.Text;
+            if (GroqAPIKeyTextBox.Text.Length > 0)
+                UserSettingsManager.Settings.GroqAPIKey = GroqAPIKeyTextBox.Text;
+            if (GroqMaxTokensTextBox.Text.Length > 0)
+                UserSettingsManager.Settings.GroqMaxTokens = ParseIntOrDefault(GroqMaxTokensTextBox.Text, UserSettingsManager.Settings.GroqMaxTokens);
+            if (GroqTemperatureTextBox.Text.Length > 0)
+                UserSettingsManager.Settings.GroqTemperature = ParseFloatOrDefault(GroqTemperatureTextBox.Text, UserSettingsManager.Settings.GroqTemperature);
             if (NativeSpeechRecognitionLanguageComboBox.Text.Length > 1)
-                Properties.Settings.Default.NativeSpeechRecognitionLanguageComboBox = NativeSpeechRecognitionLanguageComboBox.Text;
+                UserSettingsManager.Settings.NativeSpeechRecognitionLanguageComboBox = NativeSpeechRecognitionLanguageComboBox.Text;
             if (WhisperSpeechRecognitionComboBox.Text.Length > 1)
-                Properties.Settings.Default.WhisperSpeechRecognitionComboBox = WhisperSpeechRecognitionComboBox.Text;
+                UserSettingsManager.Settings.WhisperSpeechRecognitionComboBox = WhisperSpeechRecognitionComboBox.Text;
             if (TwitchAuthServerConfig.Text.Length > 1)
-                Properties.Settings.Default.TwitchAuthServerConfig = TwitchAuthServerConfig.Text;
+                UserSettingsManager.Settings.TwitchAuthServerConfig = TwitchAuthServerConfig.Text;
             if (WebsourceServer.Text.Length > 1)
-                Properties.Settings.Default.WebsourceServer = WebsourceServer.Text;
-            Properties.Settings.Default.UseOllamaLLMCheckBox = UseOllamaLLMCheckBox.Checked;
-            Properties.Settings.Default.WebsourceServerEnable = WebsourceServerEnable.Checked;
-            Properties.Settings.Default.Save();
+                UserSettingsManager.Settings.WebsourceServer = WebsourceServer.Text;
+            UserSettingsManager.Settings.UseOllamaLLMCheckBox = UseOllamaLLMCheckBox.Checked;
+            UserSettingsManager.Settings.OllamaThinkingCheckBox = !OllamaNoReasoningCheckBox.Checked;
+            UserSettingsManager.Settings.GPTReasoningEffortComboBox = GPTReasoningComboBox.SelectedIndex > 0 ? GPTReasoningComboBox.Text : "";
+            UserSettingsManager.Settings.GroqReasoningEffortComboBox = GroqReasoningComboBox.SelectedIndex > 0 ? GroqReasoningComboBox.Text : "";
+            UserSettingsManager.Settings.WebsourceServerEnable = WebsourceServerEnable.Checked;
+            UserSettingsManager.Settings.ElevenLabsModel = ElevenLabsModelComboBox.Text;
+            UserSettingsManager.SaveSettings();
 
             //we should also close the EventSub client if it is running
             if (twitchStartedTest)
@@ -343,13 +572,13 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void SoundInputDevices_SelectedIndexChanged(object sender, EventArgs e)
         {
             _bBBlog.Info("Selected input device changed to " + SoundInputDevices.Text);
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void PersonasPanel_VisibleChanged(object sender, EventArgs e)
         {
             //we dont need the eventhandlers when its becoming visible
@@ -369,9 +598,17 @@ namespace BanterBrain_Buddy
 
                 _bBBlog.Debug("Personas panel visible. we need to load the persona's and enable the eventhandlers");
                 await LoadPersonas();
-                while (PersonaComboBox.Items.Count == 0)
+                //bound the wait, if the personas never load we must not hang here forever
+                int personaWaitTries = 0;
+                while (PersonaComboBox.Items.Count == 0 && personaWaitTries++ < 10)
                 {
                     await Task.Delay(1000);
+                }
+                if (PersonaComboBox.Items.Count == 0)
+                {
+                    _bBBlog.Error("No personas available after waiting, skipping persona load");
+                    PersonasPanel.Enabled = true;
+                    return;
                 }
 
                 //prevent deleting of Default persona
@@ -403,7 +640,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async Task<bool> FillVoiceBoxes()
         {
             _bBBlog.Info("Fill voice boxes: " + TTSProviderComboBox.Text);
@@ -511,7 +748,7 @@ namespace BanterBrain_Buddy
             return false;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async Task LoadPersonas()
         {
             PersonaComboBox.Items.Clear();
@@ -545,17 +782,29 @@ namespace BanterBrain_Buddy
                     new() { Name = "Default", RoleText = "You are a cheeky streamer assistant with a silly personality.", VoiceProvider = "Native", VoiceName = tmpNativeVoice, VoiceOptions = [], Volume = 0, Rate = 0, Pitch = 0 }
                 };
                 string tmpString = JsonConvert.SerializeObject(newPersonas);
-                using var sw = new StreamWriter(tmpFile, true);
-                sw.Write(tmpString);
+                try
+                {
+                    //the settings directory might not exist yet on a first start, StreamWriter throws without it
+                    Directory.CreateDirectory(Path.GetDirectoryName(tmpFile));
+                    using var sw = new StreamWriter(tmpFile, true);
+                    sw.Write(tmpString);
+                }
+                catch (Exception ex)
+                {
+                    _bBBlog.Error("Could not create the personas file: " + ex.Message);
+                    return;
+                }
             }
-            else
+            //load the file in both cases, a freshly created persona file still has to fill the
+            //combobox otherwise the panel stays empty and the wait loop above never finishes
+            _bBBlog.Debug("Loading personas from file into the list.");
+            personas.Clear();
+            PersonaComboBox.Items.Clear();
+            try
             {
-                _bBBlog.Debug("Personas file found, loading it.");
-                personas.Clear();
-                PersonaComboBox.Items.Clear();
                 using var sr = new StreamReader(tmpFile);
                 var tmpString = sr.ReadToEnd();
-                var tmpPersonas = JsonConvert.DeserializeObject<List<Personas>>(tmpString);
+                var tmpPersonas = JsonConvert.DeserializeObject<List<Personas>>(tmpString) ?? new List<Personas>();
                 foreach (var persona in tmpPersonas)
                 {
                     _bBBlog.Debug("Loading persona into available list: " + persona.Name);
@@ -563,11 +812,15 @@ namespace BanterBrain_Buddy
                     PersonaComboBox.Items.Add(persona.Name);
                 }
             }
+            catch (Exception ex)
+            {
+                _bBBlog.Error("Could not read the personas file: " + ex.Message);
+            }
             DeletePersona.Enabled = true;
         }
 
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void NewPersona_Click(object sender, EventArgs e)
         {
             _bBBlog.Debug("New persona button clicked");
@@ -589,7 +842,7 @@ namespace BanterBrain_Buddy
             DeletePersona.Enabled = false;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void SavePersona_Click(object sender, EventArgs e)
         {
             personaEdited = false;
@@ -627,9 +880,9 @@ namespace BanterBrain_Buddy
                     _bBBlog.Debug($"Persona {persona.Name} already exists, updating it");
                     persona.RoleText = PersonaRoleTextBox.Text;
                     persona.VoiceProvider = TTSProviderComboBox.Text;
-                    persona.Rate = int.Parse(TTSSpeedLevel.Text);
-                    persona.Volume = int.Parse(TTSVoiceLevel.Text);
-                    persona.Pitch = int.Parse(TTSPitchLevel.Text);
+                    persona.Rate = ParseIntOrDefault(TTSSpeedLevel.Text, persona.Rate);
+                    persona.Volume = ParseIntOrDefault(TTSVoiceLevel.Text, persona.Volume);
+                    persona.Pitch = ParseIntOrDefault(TTSPitchLevel.Text, persona.Pitch);
 
                     //we need to add the voiceID for the ElevenLabs API
                     if (TTSProviderComboBox.Text == "ElevenLabs")
@@ -691,7 +944,7 @@ namespace BanterBrain_Buddy
 
         //finds the voiceID for the selected voice and adds it to the string
         //so that we have both the ID and the voice name in a string that can be stored
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private string ElevenlabIDbyVoice(string voiceName)
         {
             foreach (var elevenLabsVoice in _elevenLabsVoicesList)
@@ -708,7 +961,7 @@ namespace BanterBrain_Buddy
             return null;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async Task TTSGetNativeVoices()
         {
             _ = new NativeSpeech();
@@ -723,7 +976,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async Task TTSGetElevenLabsVoices()
         {
             elevenLabsApi ??= new(ElevenlabsAPIKeyTextBox.Text);
@@ -763,8 +1016,12 @@ namespace BanterBrain_Buddy
                 TTSOutputVoice.SelectedIndex = TTSOutputVoice.Items.IndexOf(tmpVoice[0]);
             }
             TTSOutputVoice.Sorted = true;
-
-            TTSOutputVoice.Text = TTSOutputVoice.Items[0].ToString();
+            //the API can return an empty voice list, picking item 0 would throw
+            if (TTSOutputVoice.Items.Count > 0)
+            {
+                TTSOutputVoice.SelectedIndex = 0;
+                TTSOutputVoice.Text = TTSOutputVoice.Items[0].ToString();
+            }
             if (TTSOutputVoiceOption2.Text.Length < 1)
             {
                 TTSOutputVoiceOption1.Text = "100";
@@ -773,7 +1030,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSFillNativeVoicesList()
         {
             _bBBlog.Info("Fill Native voice list");
@@ -785,12 +1042,17 @@ namespace BanterBrain_Buddy
                 TTSOutputVoice.Items.Add(OutputVoice);
             }
             TTSOutputVoice.Sorted = true;
-            TTSOutputVoice.Text = TTSOutputVoice.Items[0].ToString();
+            //a machine without installed voices gives an empty list
+            if (TTSOutputVoice.Items.Count > 0)
+            {
+                TTSOutputVoice.SelectedIndex = 0;
+                TTSOutputVoice.Text = TTSOutputVoice.Items[0].ToString();
+            }
             TTSOutputVoiceOption1.Text = "";
         }
 
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         /// <summary>
         /// This function gets the list of voices available in the Azure TTS API
         /// </summary>
@@ -828,7 +1090,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         /// <summary>
         /// This function fills the Azure voice list in the GUI TTSOutputVoice
         /// </summary>
@@ -843,13 +1105,17 @@ namespace BanterBrain_Buddy
                 TTSOutputVoice.Items.Add(azureRegionVoice.LocaleDisplayname + "-" + azureRegionVoice.Gender + "-" + azureRegionVoice.LocalName);
             }
             TTSOutputVoice.Sorted = true;
-            //select the first item, to have at least something
-            TTSOutputVoice.Text = TTSOutputVoice.Items[0].ToString();
+            //select the first item, to have at least something, the voice list can be empty
+            if (TTSOutputVoice.Items.Count > 0)
+            {
+                TTSOutputVoice.SelectedIndex = 0;
+                TTSOutputVoice.Text = TTSOutputVoice.Items[0].ToString();
+            }
             TTSOutputVoiceOption1.Text = "";
             TTSAzureFillOptions(TTSOutputVoice.Text);
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         //Azure Text-To-Speach
         private async Task TTSAzureSpeakToOutput(string TextToSpeak)
         {
@@ -857,8 +1123,8 @@ namespace BanterBrain_Buddy
             AzureSpeechAPI azureSpeechAPI = new(AzureAPIKeyTextBox.Text, AzureRegionTextBox.Text, AzureLanguageComboBox.Text);
 
             //set the output voice, gender and locale, and the style
-            _bBBlog.Info("Setting up Azure TTS: " + int.Parse(TTSVoiceLevel.Text));
-            await azureSpeechAPI.AzureTTSInit(TTSOutputVoice.Text, TTSOutputVoiceOption1.Text, TTSOutputVoice.Text, int.Parse(TTSVoiceLevel.Text), int.Parse(TTSSpeedLevel.Text), int.Parse(TTSPitchLevel.Text));
+            _bBBlog.Info("Setting up Azure TTS: " + ParseIntOrDefault(TTSVoiceLevel.Text, 0));
+            await azureSpeechAPI.AzureTTSInit(TTSOutputVoice.Text, TTSOutputVoiceOption1.Text, TTSOutputVoice.Text, ParseIntOrDefault(TTSVoiceLevel.Text, 0), ParseIntOrDefault(TTSSpeedLevel.Text, 0), ParseIntOrDefault(TTSPitchLevel.Text, 0));
 
             var result = await azureSpeechAPI.AzureSpeak(TextToSpeak);
             if (!result)
@@ -874,7 +1140,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         /// <summary>
         /// This function fills the Azure voice options in the GUI TTSOutputVoiceOptions, depends on the selected voice
         /// </summary>
@@ -899,10 +1165,15 @@ namespace BanterBrain_Buddy
                     }
                 }
             }
-            TTSOutputVoiceOption1.Text = TTSOutputVoiceOption1.Items[0].ToString();
+            //a voice without any style gives an empty option list
+            if (TTSOutputVoiceOption1.Items.Count > 0)
+            {
+                TTSOutputVoiceOption1.SelectedIndex = 0;
+                TTSOutputVoiceOption1.Text = TTSOutputVoiceOption1.Items[0].ToString();
+            }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void TestAzureAPISettings_Click(object sender, EventArgs e)
         {
             //test if the Azure API settings are correct
@@ -912,7 +1183,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void TestVoiceButton_Click(object sender, EventArgs e)
         {
             TestVoiceButton.Enabled = false;
@@ -928,7 +1199,7 @@ namespace BanterBrain_Buddy
             TestVoiceButton.Enabled = true;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         //this is the generic caller for TTS function that makes sure the TTS is done before continuing
         //we make this public so we can call it to test
         public async Task SayTextTest(string TextToSay)
@@ -964,11 +1235,11 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async Task TTSOpenAIWhisperSpeakToOutput(string TextToSay)
         {
             OpenAI openAI = new();
-            var result = await openAI.OpenAITTS(TextToSay, TTSAudioOutputComboBox.Text, TTSOutputVoice.Text, int.Parse(TTSSpeedLevel.Text), int.Parse(TTSVoiceLevel.Text));
+            var result = await openAI.OpenAITTS(TextToSay, TTSAudioOutputComboBox.Text, TTSOutputVoice.Text, ParseIntOrDefault(TTSSpeedLevel.Text, 0), ParseIntOrDefault(TTSVoiceLevel.Text, 0));
             if (!result)
             {
                 _bBBlog.Error("OpenAI Whisper TTS error. Is there a problem with your API key or subscription?");
@@ -976,11 +1247,13 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async Task TTSElevenLabsSpeakToOutput(string TextToSay)
         {
             string outputVoice = TTSOutputVoice.Text;
             //output voice text has to be in the format of voiceID;voiceName we need to find it in _elevenLabsVoicesList
+            //the voice fetch can have failed, iterating a null list would crash the async caller
+            if (_elevenLabsVoicesList != null)
             for (int i = 0; i < _elevenLabsVoicesList.Count; i++)
             {
                 if (_elevenLabsVoicesList[i].Contains(outputVoice))
@@ -994,7 +1267,7 @@ namespace BanterBrain_Buddy
 
             elevenLabsApi ??= new(ElevenlabsAPIKeyTextBox.Text);
 
-            var result = await elevenLabsApi.ElevenLabsTTS(TextToSay, TTSAudioOutputComboBox.Text, outputVoice, int.Parse(TTSOutputVoiceOption1.Text), int.Parse(TTSOutputVoiceOption2.Text), int.Parse(TTSOutputVoiceOption3.Text), int.Parse(TTSVoiceLevel.Text) );
+            var result = await elevenLabsApi.ElevenLabsTTS(TextToSay, TTSAudioOutputComboBox.Text, outputVoice, ParseIntOrDefault(TTSOutputVoiceOption1.Text, 0), ParseIntOrDefault(TTSOutputVoiceOption2.Text, 0), ParseIntOrDefault(TTSOutputVoiceOption3.Text, 0), ParseIntOrDefault(TTSVoiceLevel.Text, 0));
             if (!result)
             {
                 _bBBlog.Error("ElevenLabs TTS error. Is there a problem with your API key or subscription?");
@@ -1002,20 +1275,19 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async Task TTSNativeSpeakToOutput(String TTSText)
         {
             _bBBlog.Info("Saying text with Native TTS");
             NativeSpeech nativeSpeech = new();
-            await nativeSpeech.NativeTTSInit(TTSOutputVoice.Text, TTSAudioOutputComboBox.Text, int.Parse(TTSVoiceLevel.Text), int.Parse(TTSSpeedLevel.Text), int.Parse(TTSPitchLevel.Text));
+            await nativeSpeech.NativeTTSInit(TTSOutputVoice.Text, TTSAudioOutputComboBox.Text, ParseIntOrDefault(TTSVoiceLevel.Text, 0), ParseIntOrDefault(TTSSpeedLevel.Text, 0), ParseIntOrDefault(TTSPitchLevel.Text, 0));
             await nativeSpeech.NativeSpeak(TTSText);
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void GPTTestButton_Click(object sender, EventArgs e)
         {
-            OpenAIAPI api = new(GPTAPIKeyTextBox.Text);
-            if (await api.Auth.ValidateAPIKey())
+            if (await OpenAI.ValidateApiKeyAsync(GPTAPIKeyTextBox.Text))
             {
                 _bBBlog.Info("ChatGPT API key is valid");
                 MessageBox.Show("ChatGPT API key is valid", "OpenAI API Test", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -1027,7 +1299,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void TwitchAuthorizeButton_Click(object sender, EventArgs e)
         {
             //lets not block everything, but lets try get a Twitch Auth token.
@@ -1044,27 +1316,38 @@ namespace BanterBrain_Buddy
             //channel.subscription.message (channel:read:subscriptions) to get sub message events
             //channel.cheer (bits:read) to get information on cheered bits
             //channel.follow (moderator:read:followers) to get who followed a channel
-            //channel.channel_points_automatic_reward_redemption.add (channel:read:redemptions) to get automatic reward redemptions by viewers
-            //channel.channel_points_custom_reward_redemption.add (channel:read:redemptions) to get custom reward redemptions by viewers
+            //channel.channel_points_automatic_reward_redemption.add (channel:read:redemptions) to get automatic reward redemptions by MyTwitchNotableViewers
+            //channel.channel_points_custom_reward_redemption.add (channel:read:redemptions) to get custom reward redemptions by MyTwitchNotableViewers
 
-            var twitchAPIResult = await twitchAPI.GetTwitchAuthToken([
-                    //API scope to send text to chat
-                    "user:write:chat", 
-                //EventSub scopes for subscription types to read chat, get subscription events, read when people cheer (bits) and follower events
-                "user:read:chat", "channel:read:subscriptions", "bits:read", "moderator:read:followers", "channel:read:redemptions"]);
-
-            if (!twitchAPIResult)
+            try
             {
-                _bBBlog.Error("Issue with getting auth token. Check logs for more information.");
-                MessageBox.Show($"Issue with getting Auth token. Check logs for more information.", "Twitch Authorization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                var twitchAPIResult = await twitchAPI.GetTwitchAuthToken([
+                        //API scope to send text to chat
+                        "user:write:chat", 
+                    //EventSub scopes for subscription types to read chat, get subscription events, read when people cheer (bits) and follower events
+                    "user:read:chat", "channel:read:subscriptions", "bits:read", "moderator:read:followers", "channel:read:redemptions"]);
+
+                if (!twitchAPIResult)
+                {
+                    _bBBlog.Error("Issue with getting auth token. Check logs for more information.");
+                    MessageBox.Show($"Issue with getting Auth token. Check logs for more information.", "Twitch Authorization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    TwitchBroadcasterAccessToken.Text = twitchAPI.TwitchAccessToken;
+                    //auto-fill the broadcaster account name that was just authorized
+                    if (!string.IsNullOrWhiteSpace(twitchAPI.TwitchAuthorizedUserName))
+                        TwitchBroadcasterChannel.Text = twitchAPI.TwitchAuthorizedUserName;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                TwitchBroadcasterAccessToken.Text = twitchAPI.TwitchAccessToken;
+                _bBBlog.Error("Twitch Broadcaster authorization failed: " + ex.Message);
+                MessageBox.Show("Twitch authorization failed: " + ex.Message, "Twitch Authorization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void TwitchTestButton_Click(object sender, EventArgs e)
         {
             //first lets make sure people cant click too often
@@ -1132,7 +1415,7 @@ namespace BanterBrain_Buddy
             TwitchAPITestButton.Enabled = true;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void EventSubTest_Click(object sender, EventArgs e)
         {
             //This only works once API access-token is verified
@@ -1153,7 +1436,7 @@ namespace BanterBrain_Buddy
         }
 
         //here we star the main websocket client for Twitch EventSub
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async Task<bool> EventSubStartWebsocketClientTest()
         {
             twitchTestEventSub = new();
@@ -1214,7 +1497,7 @@ namespace BanterBrain_Buddy
                 }
                 else
                 { //we are in mock mode, so we just say we started
-                    _bBBlog.Info("Twitch EventSub client  starting successfully in mock mode");
+                    _bBBlog.Info("Twitch EventSub client starting successfully in mock mode");
                     eventSubStart = await twitchTestEventSub.EventSubStartAsyncMock();
 
                     twitchStartedTest = true;
@@ -1242,7 +1525,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchEventSub_OnESubChannelPointRedemption(object sender, TwitchEventhandlers.OnChannelPointCustomRedemptionEventArgs e)
         {
             string user = e.GetChannelPointCustomRedemptionInfo()[0];
@@ -1250,7 +1533,7 @@ namespace BanterBrain_Buddy
             _bBBlog.Info($"TEST: Valid Twitch Channel Point Redemption message received: {user} redeemed with message: {message}");
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         //TwitchEventSub_OnESubGiftedSub
         private void TwitchEventSub_OnESubGiftedSub(object sender, TwitchEventhandlers.OnSubscriptionGiftEventArgs e)
         {
@@ -1260,7 +1543,7 @@ namespace BanterBrain_Buddy
             _bBBlog.Info($"TEST: Valid Twitch Gifted Subscription message received: {user} gifted {amount} subs tier {tier}");
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchEventSub_OnESubSubscribe(object sender, TwitchEventhandlers.OnSubscribeEventArgs e)
         {
             string user = e.GetSubscribeInfo()[0];
@@ -1268,7 +1551,7 @@ namespace BanterBrain_Buddy
             _bBBlog.Info($"TEST: Valid Twitch Subscription message received: {user} subscribed to {broadcaster}");
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchEventSub_OnESubReSubscribe(object sender, TwitchEventhandlers.OnReSubscribeEventArgs e)
         {
             string user = e.GetSubscribeInfo()[0];
@@ -1277,7 +1560,7 @@ namespace BanterBrain_Buddy
             _bBBlog.Info($"TEST: Valid Twitch Re-Subscription message received: {user} subscribed for {months} months with message: {message}");
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         //eventhandler for valid chat messages trigger
         private void TwitchEventSub_OnESubChatMessage(object sender, TwitchEventhandlers.OnChatEventArgs e)
         {
@@ -1288,7 +1571,7 @@ namespace BanterBrain_Buddy
             _bBBlog.Info("TEST: Valid Twitch Chat message received from user: " + user + " message: " + message);
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchEventSub_OnESubCheerMessage(object sender, TwitchEventhandlers.OnCheerEventsArgs e)
         {
             //string user = e.GetCheerInfo()[0];
@@ -1297,7 +1580,7 @@ namespace BanterBrain_Buddy
             _bBBlog.Debug("TEST: Valid Twitch Cheer message received");
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchPanel_VisibleChanged(object sender, EventArgs e)
         {
             if (twitchAPIVerified)
@@ -1310,7 +1593,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void PersonaRoleTextBox_TextChanged(object sender, EventArgs e)
         {
             if (PersonasPanel.Visible)
@@ -1321,7 +1604,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSOutputVoiceOption1_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (PersonasPanel.Visible)
@@ -1332,7 +1615,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void PersonaComboBox_SelectedValueChanged(object sender, EventArgs e)
         {
             PersonasPanel.Enabled = false;
@@ -1345,7 +1628,10 @@ namespace BanterBrain_Buddy
             //if the persona is changed we first need to check if the persona was edited if so we need to ask to save it
             if (personaEdited && PersonasPanel.Visible)
             {
-                _bBBlog.Debug($"Persona {personas[previousPersonaSelectedIndex].Name} was edited, asking to save it");
+                //a hand-edited or emptied persona list can make the previous index invalid
+                string previousPersonaName = (previousPersonaSelectedIndex >= 0 && previousPersonaSelectedIndex < personas.Count)
+                    ? personas[previousPersonaSelectedIndex].Name : "unknown";
+                _bBBlog.Debug($"Persona {previousPersonaName} was edited, asking to save it");
                 var result = MessageBox.Show("Persona Changed. Do you want to save the persona?", "Save Persona", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
                 if (result == DialogResult.Yes)
                 {
@@ -1371,6 +1657,18 @@ namespace BanterBrain_Buddy
             else
             {
                 PersonaComboBox.SelectedIndex = tmpNewPersonaIndex;
+            }
+
+            //if the list is empty or the index invalid, loading the persona cannot continue
+            if (PersonaComboBox.SelectedIndex < 0 || PersonaComboBox.SelectedIndex >= personas.Count)
+            {
+                _bBBlog.Error("No persona available for the selected index, aborting persona load");
+                PersonasPanel.Enabled = true;
+                if (PersonasPanel.Visible)
+                {
+                    EnablePersonaEventHandlers();
+                }
+                return;
             }
 
             var selectedPersona = personas[PersonaComboBox.SelectedIndex];
@@ -1412,7 +1710,7 @@ namespace BanterBrain_Buddy
                     _bBBlog.Debug($"Elevenlabs voice selected: {tmpVoice[1]}");
                     TTSOutputVoice.SelectedIndex = TTSOutputVoice.FindStringExact(tmpVoice[1]);
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     _bBBlog.Error("Error loading persona voice, no voiceID found in persona");
                     MessageBox.Show("Error loading persona voice, no voiceID found in persona", "Persona voice error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -1440,10 +1738,14 @@ namespace BanterBrain_Buddy
                 if (TTSProviderComboBox.Text == "ElevenLabs")
                 {
                     _bBBlog.Debug("Persona Elevenlabs voice options found, loading them into the combo box");
-                    _bBBlog.Debug($"Option1: {selectedPersona.VoiceOptions[0]} option2: {selectedPersona.VoiceOptions[1]} option3: {selectedPersona.VoiceOptions[2]}");
-                    TTSOutputVoiceOption1.Text = selectedPersona.VoiceOptions[0];
-                    TTSOutputVoiceOption2.Text = selectedPersona.VoiceOptions[1];
-                    TTSOutputVoiceOption3.Text = selectedPersona.VoiceOptions[2];
+                    //a hand edited persona can have fewer than the three options ElevenLabs uses
+                    string elevenOption1 = selectedPersona.VoiceOptions.Count > 0 ? selectedPersona.VoiceOptions[0] : "100";
+                    string elevenOption2 = selectedPersona.VoiceOptions.Count > 1 ? selectedPersona.VoiceOptions[1] : "100";
+                    string elevenOption3 = selectedPersona.VoiceOptions.Count > 2 ? selectedPersona.VoiceOptions[2] : "0";
+                    _bBBlog.Debug($"Option1: {elevenOption1} option2: {elevenOption2} option3: {elevenOption3}");
+                    TTSOutputVoiceOption1.Text = elevenOption1;
+                    TTSOutputVoiceOption2.Text = elevenOption2;
+                    TTSOutputVoiceOption3.Text = elevenOption3;
                 }
             }
             if (PersonaComboBox.Text == "Default")
@@ -1463,7 +1765,7 @@ namespace BanterBrain_Buddy
             previousPersonaSelectedIndex = PersonaComboBox.SelectedIndex;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void TTSProviderComboBox_SelectedValueChanged(object sender, EventArgs e)
         {
             PersonasPanel.Enabled = false;
@@ -1484,7 +1786,7 @@ namespace BanterBrain_Buddy
             PersonasPanel.Enabled = true;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSOutputVoice_SelectedValueChanged(object sender, EventArgs e)
         {
             if (PersonasPanel.Visible)
@@ -1500,7 +1802,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void MenuTreeView_BeforeSelect(object sender, TreeViewCancelEventArgs e)
         {
             if (personaEdited)
@@ -1516,7 +1818,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         public void ShowHotkeyDialogBox()
         {
             HotkeyForm HotkeyDialog = new();
@@ -1545,13 +1847,13 @@ namespace BanterBrain_Buddy
             HotkeyDialog.Dispose();
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void MicrophoneHotkeySet_Click(object sender, EventArgs e)
         {
             ShowHotkeyDialogBox();
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void DeletePersona_Click(object sender, EventArgs e)
         {
             if (PersonasPanel.Visible)
@@ -1583,7 +1885,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void ElevenLabsTestButton_Click(object sender, EventArgs e)
         {
             //call test api key for elevenlabs
@@ -1603,7 +1905,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSOutputVoiceOption1_TextChanged(object sender, EventArgs e)
         {
             if (PersonasPanel.Visible && TTSOutputVoiceOption1.DropDownStyle == ComboBoxStyle.Simple)
@@ -1613,7 +1915,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSOutputVoiceOption2_TextChanged(object sender, EventArgs e)
         {
             if (PersonasPanel.Visible && TTSOutputVoiceOption2.DropDownStyle == ComboBoxStyle.Simple)
@@ -1623,7 +1925,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSOutputVoiceOption3_TextChanged(object sender, EventArgs e)
         {
             if (PersonasPanel.Visible && TTSOutputVoiceOption3.DropDownStyle == ComboBoxStyle.Simple)
@@ -1633,7 +1935,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void OllamaTestButton_Click(object sender, EventArgs e)
         {
             if (OllamaURITextBox.Text.Length > 1)
@@ -1700,7 +2002,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void OllamaPanel_VisibleChanged(object sender, EventArgs e)
         {
             //dont bother filling if we dont use the Ollama LLM
@@ -1715,19 +2017,19 @@ namespace BanterBrain_Buddy
             _bBBlog.Info("Ollama now we load the Uri");
 
             //if theres nothing we use the default for Ollama
-            if (OllamaPanel.Visible && Properties.Settings.Default.OllamaURI.Length < 1)
+            if (OllamaPanel.Visible && UserSettingsManager.Settings.OllamaURI.Length < 1)
             {
                 _bBBlog.Info("Ollama URI is empty, setting to default");
                 OllamaURITextBox.Text = "http://localhost:11434";
-                Properties.Settings.Default.OllamaURI = OllamaURITextBox.Text;
-                Properties.Settings.Default.Save();
+                UserSettingsManager.Settings.OllamaURI = OllamaURITextBox.Text;
+                UserSettingsManager.SaveSettings();
             }
             else
             {
-                OllamaURITextBox.Text = Properties.Settings.Default.OllamaURI;
+                OllamaURITextBox.Text = UserSettingsManager.Settings.OllamaURI;
             }
 
-            if (OllamaPanel.Visible && Properties.Settings.Default.OllamaURI.Length > 1)
+            if (OllamaPanel.Visible && UserSettingsManager.Settings.OllamaURI.Length > 1)
             {
 
                 OllamaLLM ollama = new(OllamaURITextBox.Text);
@@ -1749,7 +2051,7 @@ namespace BanterBrain_Buddy
                 }
                 _bBBlog.Info($"Found {installedModels.Count} models");
                 // lets set a default if there's none
-                if (Properties.Settings.Default.OllamaSelectedModel.Length < 1)
+                if (UserSettingsManager.Settings.OllamaSelectedModel.Length < 1)
                 {
                     _bBBlog.Info("Ollama no model selected, setting to default");
                     if (OllamaModelsComboBox.Items.Count > 0)
@@ -1760,8 +2062,8 @@ namespace BanterBrain_Buddy
                 } //else we pre-select the one thats in the settings
                 else
                 {
-                    _bBBlog.Info("Setting selected model to: " + Properties.Settings.Default.OllamaSelectedModel);
-                    OllamaModelsComboBox.SelectedIndex = OllamaModelsComboBox.FindStringExact(Properties.Settings.Default.OllamaSelectedModel);
+                    _bBBlog.Info("Setting selected model to: " + UserSettingsManager.Settings.OllamaSelectedModel);
+                    OllamaModelsComboBox.SelectedIndex = OllamaModelsComboBox.FindStringExact(UserSettingsManager.Settings.OllamaSelectedModel);
                 }
 
             }
@@ -1772,7 +2074,7 @@ namespace BanterBrain_Buddy
             OllamaPanel.Enabled = true;
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void UseOllamaLLMCheckBox_CheckedChanged(object sender, EventArgs e)
         {
             /*    if (UseOllamaLLMCheckBox.Checked)
@@ -1786,7 +2088,7 @@ namespace BanterBrain_Buddy
             */
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void GPTMaxTokensTextBox_KeyPress(object sender, KeyPressEventArgs e)
         {
             // Check if the input is not a digit or control (like backspace)
@@ -1796,33 +2098,34 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void GPTTemperatureTextBox_KeyPress(object sender, KeyPressEventArgs e)
         {
+            System.Windows.Forms.TextBox currenttb = (System.Windows.Forms.TextBox)sender;
             string decimalSeparator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
 
-            // Check if the input is not a digit, not a control (like backspace), and not the decimal separator
-            if (!char.IsDigit(e.KeyChar) && !char.IsControl(e.KeyChar) && e.KeyChar.ToString() != decimalSeparator)
+            // control keys like backspace and the delete key always have to pass, otherwise an
+            // impossible value could never be corrected again
+            if (char.IsControl(e.KeyChar))
+            {
+                return;
+            }
+            // only digits and the decimal separator of the current culture can be typed
+            if (!char.IsDigit(e.KeyChar) && e.KeyChar.ToString() != decimalSeparator)
+            {
+                e.Handled = true;  // Ignore the input
+                return;
+            }
+            // the separator is only allowed once
+            if (e.KeyChar.ToString() == decimalSeparator && currenttb.Text.Contains(decimalSeparator))
             {
                 e.Handled = true;  // Ignore the input
             }
-            // Check if it's the decimal separator, and if so, check if there's already one in the text box
-            else if (e.KeyChar.ToString() == decimalSeparator && (sender as System.Windows.Forms.TextBox).Text.IndexOf(decimalSeparator) > -1)
-            {
-                e.Handled = true;  // Ignore the input
-            }
-            else
-            {
-                // Check if the resulting value would be higher than 2
-                string newText = (sender as System.Windows.Forms.TextBox).Text + e.KeyChar;
-                if (float.TryParse(newText, NumberStyles.Float, CultureInfo.CurrentCulture, out float result) && result > 2)
-                {
-                    e.Handled = true;  // Ignore the input
-                }
-            }
+            // the value range itself is checked when the field is left, blocking single keystrokes
+            // here only made it impossible to edit a value that was already out of range
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void GPTTemperatureTextBox_Validating(object sender, CancelEventArgs e)
         {
             System.Windows.Forms.TextBox currenttb = (System.Windows.Forms.TextBox)sender;
@@ -1830,10 +2133,32 @@ namespace BanterBrain_Buddy
             {
                 MessageBox.Show("This field cannot be empty");
                 e.Cancel = true;  // Cancel the event and keep the focus on the TextBox
+                return;
+            }
+            string decimalSeparator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator;
+            string text = currenttb.Text.Trim();
+            // a pasted value from another locale still parses, a point is read as the local separator
+            if (decimalSeparator != "." && !text.Contains(decimalSeparator) && text.Contains("."))
+            {
+                text = text.Replace(".", decimalSeparator);
+            }
+            if (!float.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out float temperature))
+            {
+                MessageBox.Show($"Temperature must be a number between 0 and 2");
+                e.Cancel = true;  // Cancel the event and keep the focus on the TextBox
+                return;
+            }
+            // values above the supported range are corrected here, pasting is not seen by KeyPress
+            if (temperature < 0 || temperature > 2)
+            {
+                float clamped = Math.Clamp(temperature, 0f, 2f);
+                _bBBlog.Info($"Temperature {temperature} out of range, clamped to {clamped}");
+                MessageBox.Show($"Temperature must be between 0 and 2, using {clamped.ToString(CultureInfo.CurrentCulture)}");
+                currenttb.Text = clamped.ToString(CultureInfo.CurrentCulture);
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void GPTMaxTokensTextBox_Validating(object sender, CancelEventArgs e)
         {
             System.Windows.Forms.TextBox currenttb = (System.Windows.Forms.TextBox)sender;
@@ -1844,7 +2169,28 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void OllamaContextTokensTextBox_KeyPress(object sender, KeyPressEventArgs e)
+        {
+            // Check if the input is not a digit or control (like backspace)
+            if (!char.IsDigit(e.KeyChar) && !char.IsControl(e.KeyChar))
+            {
+                e.Handled = true;  // Ignore the input
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void OllamaContextTokensTextBox_Validating(object sender, CancelEventArgs e)
+        {
+            System.Windows.Forms.TextBox currenttb = (System.Windows.Forms.TextBox)sender;
+            if (string.IsNullOrWhiteSpace(currenttb.Text))
+            {
+                MessageBox.Show("This field cannot be empty. Use 0 for the Ollama server default.");
+                e.Cancel = true;  // Cancel the event and keep the focus on the TextBox
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
         private void PersonaComboBox_Validating(object sender, CancelEventArgs e)
         {
             System.Windows.Forms.ComboBox currenttb = (System.Windows.Forms.ComboBox)sender;
@@ -1855,7 +2201,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void PersonaRoleTextBox_Validating(object sender, CancelEventArgs e)
         {
             System.Windows.Forms.TextBox currenttb = (System.Windows.Forms.TextBox)sender;
@@ -1866,7 +2212,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSOutputVoiceOption1_Validating(object sender, CancelEventArgs e)
         {
             if (TTSOutputVoiceOption1.Enabled)
@@ -1880,7 +2226,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSOutputVoiceOption2_Validating(object sender, CancelEventArgs e)
         {
             if (TTSOutputVoiceOption2.Enabled)
@@ -1894,7 +2240,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSOutputVoiceOption3_Validating(object sender, CancelEventArgs e)
         {
             if (TTSOutputVoiceOption3.Enabled)
@@ -1908,7 +2254,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void UseOllamaLLMCheckBox_Click(object sender, EventArgs e)
         {
             OllamaURITextBox.Enabled = true;
@@ -1922,7 +2268,7 @@ namespace BanterBrain_Buddy
 
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchAuthServerConfig_Validating(object sender, CancelEventArgs e)
         {
             System.Windows.Forms.TextBox currenttb = (System.Windows.Forms.TextBox)sender;
@@ -1934,14 +2280,14 @@ namespace BanterBrain_Buddy
 
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TwitchAuthServerConfig_Leave(object sender, EventArgs e)
         {
             //if something new entered, save it.
-            if (TwitchAuthServerConfig.Text.Length > 1 && TwitchAuthServerConfig.Text != Properties.Settings.Default.TwitchAuthServerConfig)
+            if (TwitchAuthServerConfig.Text.Length > 1 && TwitchAuthServerConfig.Text != UserSettingsManager.Settings.TwitchAuthServerConfig)
             {
-                Properties.Settings.Default.TwitchAuthServerConfig = TwitchAuthServerConfig.Text;
-                Properties.Settings.Default.Save();
+                UserSettingsManager.Settings.TwitchAuthServerConfig = TwitchAuthServerConfig.Text;
+                UserSettingsManager.SaveSettings();
             }
         }
 
@@ -1950,7 +2296,7 @@ namespace BanterBrain_Buddy
             Process.Start("explorer.exe", Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + "\\html");
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void OBSPanel_VisibleChanged(object sender, EventArgs e)
         {
             if (WebsourceServerEnable.Checked)
@@ -1963,7 +2309,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void WebsourceServerEnable_Click(object sender, EventArgs e)
         {
             if (WebsourceServerEnable.Checked)
@@ -1976,7 +2322,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void WebsourceServer_Validating(object sender, CancelEventArgs e)
         {
             System.Windows.Forms.TextBox currenttb = (System.Windows.Forms.TextBox)sender;
@@ -1987,7 +2333,165 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        //fills the GPT model selector from the library's model listing instead of the statically
+        //configured items, the selected model is restored when it is still offered
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async Task<bool> RefreshGPTModelsFromLibraryAsync(string apiKey)
+        {
+            OpenAIChatGPTPanel.Enabled = false;
+            try
+            {
+                List<string> chatModels;
+                try
+                {
+                    chatModels = await OpenAI.FetchChatModelNamesAsync(apiKey);
+                }
+                catch (Exception ex)
+                {
+                    //this runs unobserved from async void handlers, nothing may escape
+                    _bBBlog.Error("GPT model fetch failed: " + ex.Message);
+                    return false;
+                }
+                if (chatModels.Count < 1)
+                {
+                    _bBBlog.Info("No GPT models fetched, keeping the built-in list");
+                    return false;
+                }
+                string previousSelection = GPTModelComboBox.Text;
+                GPTModelComboBox.Items.Clear();
+                foreach (string model in chatModels)
+                {
+                    GPTModelComboBox.Items.Add(model);
+                }
+                //prefer the model the user had picked, then the one from the settings, else the first
+                int index = GPTModelComboBox.FindStringExact(previousSelection);
+                if (index < 0)
+                    index = GPTModelComboBox.FindStringExact(UserSettingsManager.Settings.GPTModel);
+                if (index >= 0)
+                    GPTModelComboBox.SelectedIndex = index;
+                else
+                    GPTModelComboBox.SelectedIndex = 0;
+                //keep the list, the selector is filled from this cache on every restart
+                UserSettingsManager.Settings.GPTModelListCache = chatModels;
+                UserSettingsManager.SaveSettings();
+                _bBBlog.Info($"Loaded {chatModels.Count} GPT models from the OpenAI API");
+                return true;
+            }
+            finally
+            {
+                OpenAIChatGPTPanel.Enabled = true;
+            }
+        }
+
+        //pulls the model list for the entered (or saved) key into the GPT model selector
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GPTLoadModelsButton_Click(object sender, EventArgs e)
+        {
+            string apiKey = GPTAPIKeyTextBox.Text;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                apiKey = UserSettingsManager.Settings.GPTAPIKey;
+            }
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                _bBBlog.Info("GPT model list load requested without an API key");
+                MessageBox.Show("Enter an OpenAI API key first", "GPT models", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            GPTLoadModelsButton.Enabled = false;
+            bool loaded = await RefreshGPTModelsFromLibraryAsync(apiKey);
+            GPTLoadModelsButton.Enabled = true;
+            if (!loaded)
+            {
+                MessageBox.Show("Could not load the model list. Check the API key or your internet connection.", "GPT models", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        //refills the reasoning effort selector with the levels cached for a model, the current pick
+        //is kept when the model also supports it. Returns false when the model was never fetched,
+        //the caller then leaves the list as it is until Load levels probes the API
+        [SupportedOSPlatform("windows10.0.10240")]
+        private bool ApplyCachedReasoningLevels(string model)
+        {
+            Dictionary<string, List<string>> cache = UserSettingsManager.Settings.GPTReasoningLevelsCache;
+            if (cache == null || string.IsNullOrEmpty(model) || !cache.TryGetValue(model, out List<string> levels) || levels == null)
+            {
+                return false;
+            }
+            string previousSelection = GPTReasoningComboBox.Text;
+            GPTReasoningComboBox.Items.Clear();
+            GPTReasoningComboBox.Items.Add("Auto (model default)");
+            foreach (string level in levels)
+            {
+                GPTReasoningComboBox.Items.Add(level);
+            }
+            int index = GPTReasoningComboBox.FindStringExact(previousSelection);
+            GPTReasoningComboBox.SelectedIndex = index >= 0 ? index : 0;
+            return true;
+        }
+
+        //when the user picks another model, show the reasoning levels cached for it, no API call
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void GPTModelComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            ApplyCachedReasoningLevels(GPTModelComboBox.Text);
+        }
+
+        //asks the OpenAI API which reasoning effort levels the model in the GPT model selector
+        //supports and fills the effort dropdown with them, the models endpoints do not report
+        //capabilities so the fetch uses a rejected probe request, see OpenAI.FetchReasoningEffortLevelsAsync
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GPTReasoningLoadButton_Click(object sender, EventArgs e)
+        {
+            string apiKey = GPTAPIKeyTextBox.Text;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                apiKey = UserSettingsManager.Settings.GPTAPIKey;
+            }
+            string model = GPTModelComboBox.Text;
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(model))
+            {
+                _bBBlog.Info("Reasoning levels requested without an API key or model");
+                MessageBox.Show("Select a GPT model and enter an OpenAI API key first", "Reasoning effort", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            GPTReasoningLoadButton.Enabled = false;
+            OpenAIChatGPTPanel.Enabled = false;
+            List<string> levels;
+            string fetchError;
+            try
+            {
+                (levels, fetchError) = await OpenAI.FetchReasoningEffortLevelsAsync(apiKey, model);
+            }
+            finally
+            {
+                GPTReasoningLoadButton.Enabled = true;
+                OpenAIChatGPTPanel.Enabled = true;
+            }
+            if (levels == null)
+            {
+                //show OpenAI's own reason, a 429 for example means the account has no credits
+                MessageBox.Show($"OpenAI did not report the reasoning levels for this model:\r\n\r\n{fetchError}", "Reasoning effort", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            if (levels.Count < 1)
+            {
+                _bBBlog.Info($"OpenAI reports {model} has no reasoning settings");
+            }
+            //remember the levels for this model, an empty list caches "no reasoning settings" too
+            UserSettingsManager.Settings.GPTReasoningLevelsCache ??= [];
+            UserSettingsManager.Settings.GPTReasoningLevelsCache[model] = levels;
+            UserSettingsManager.SaveSettings();
+            ApplyCachedReasoningLevels(model);
+            if (levels.Count < 1)
+            {
+                MessageBox.Show($"The model \"{model}\" has no reasoning effort settings.", "Reasoning effort", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            _bBBlog.Info($"Loaded {levels.Count} reasoning levels for {model}");
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void OpenAIChatGPTPanel_Validating(object sender, CancelEventArgs e)
         {
             if (OpenAIChatGPTPanel.Visible)
@@ -1995,8 +2499,7 @@ namespace BanterBrain_Buddy
                 if (GPTAPIKeyTextBox.Text.Length > 1)
                 {
                     //we need to see if the entered key is valid
-                    OpenAIAPI api = new(GPTAPIKeyTextBox.Text);
-                    if (!await api.Auth.ValidateAPIKey())
+                    if (!await OpenAI.ValidateApiKeyAsync(GPTAPIKeyTextBox.Text))
                     {
                         MessageBox.Show("Invalid OpenAI API key. Value cleared", "OpenAI API key error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         GPTAPIKeyTextBox.Text = "";
@@ -2005,20 +2508,293 @@ namespace BanterBrain_Buddy
                     else
                     {
                         //might as well save since its a valid key
-                        Properties.Settings.Default.GPTAPIKey = GPTAPIKeyTextBox.Text;
-                        Properties.Settings.Default.Save();
+                        UserSettingsManager.Settings.GPTAPIKey = GPTAPIKeyTextBox.Text;
+                        UserSettingsManager.SaveSettings();
                     }
                 }
                 else
                 {
                     //its empty so lets save it
-                    Properties.Settings.Default.GPTAPIKey = "";
-                    Properties.Settings.Default.Save();
+                    UserSettingsManager.Settings.GPTAPIKey = "";
+                    UserSettingsManager.SaveSettings();
                 }
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        //checks the entered Groq key with a free model listing call and saves it when valid,
+        //mirrors the OpenAI panel handler
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GroqPanel_Validating(object sender, CancelEventArgs e)
+        {
+            if (GroqPanel.Visible)
+            {
+                if (GroqAPIKeyTextBox.Text.Length > 1)
+                {
+                    //we need to see if the entered key is valid
+                    if (!await Groq.ValidateApiKeyAsync(GroqAPIKeyTextBox.Text))
+                    {
+                        MessageBox.Show("Invalid Groq API key. Value cleared", "Groq API key error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        GroqAPIKeyTextBox.Text = "";
+                        e.Cancel = true;
+                    }
+                    else
+                    {
+                        //might as well save since its a valid key
+                        UserSettingsManager.Settings.GroqAPIKey = GroqAPIKeyTextBox.Text;
+                        UserSettingsManager.SaveSettings();
+                    }
+                }
+                else
+                {
+                    //its empty so lets save it
+                    UserSettingsManager.Settings.GroqAPIKey = "";
+                    UserSettingsManager.SaveSettings();
+                }
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GroqTestButton_Click(object sender, EventArgs e)
+        {
+            if (await Groq.ValidateApiKeyAsync(GroqAPIKeyTextBox.Text))
+            {
+                _bBBlog.Info("Groq API key is valid");
+                MessageBox.Show("Groq API key is valid", "Groq API Test", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                _bBBlog.Error("Groq API key is invalid");
+                MessageBox.Show("Groq API key is invalid", "Groq API Test", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        //pulls the model list for the entered (or saved) key into the Groq model selector
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GroqLoadModelsButton_Click(object sender, EventArgs e)
+        {
+            string apiKey = GroqAPIKeyTextBox.Text;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                apiKey = UserSettingsManager.Settings.GroqAPIKey;
+            }
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                _bBBlog.Info("Groq model list load requested without an API key");
+                MessageBox.Show("Enter a Groq API key first", "Groq models", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            GroqLoadModelsButton.Enabled = false;
+            bool loaded = await RefreshGroqModelsFromAPIAsync(apiKey);
+            GroqLoadModelsButton.Enabled = true;
+            if (!loaded)
+            {
+                MessageBox.Show("Could not load the model list. Check the API key or your internet connection.", "Groq models", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        //fills the Groq model selector from Groq's model listing instead of the statically
+        //configured items, the selected model is restored when it is still offered
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async Task<bool> RefreshGroqModelsFromAPIAsync(string apiKey)
+        {
+            GroqPanel.Enabled = false;
+            try
+            {
+                List<string> chatModels;
+                try
+                {
+                    chatModels = await Groq.FetchChatModelNamesAsync(apiKey);
+                }
+                catch (Exception ex)
+                {
+                    //this runs unobserved from async void handlers, nothing may escape
+                    _bBBlog.Error("Groq model fetch failed: " + ex.Message);
+                    return false;
+                }
+                if (chatModels.Count < 1)
+                {
+                    _bBBlog.Info("No Groq models fetched, keeping the built-in list");
+                    return false;
+                }
+                string previousSelection = GroqModelComboBox.Text;
+                GroqModelComboBox.Items.Clear();
+                foreach (string model in chatModels)
+                {
+                    GroqModelComboBox.Items.Add(model);
+                }
+                //prefer the model the user had picked, then the one from the settings, else the first
+                int index = GroqModelComboBox.FindStringExact(previousSelection);
+                if (index < 0)
+                    index = GroqModelComboBox.FindStringExact(UserSettingsManager.Settings.GroqModel ?? "");
+                if (index >= 0)
+                    GroqModelComboBox.SelectedIndex = index;
+                else
+                    GroqModelComboBox.SelectedIndex = 0;
+                //keep the list, the selector is filled from this cache on every restart
+                UserSettingsManager.Settings.GroqModelListCache = chatModels;
+                UserSettingsManager.SaveSettings();
+                _bBBlog.Info($"Loaded {chatModels.Count} Groq models from the Groq API");
+                return true;
+            }
+            finally
+            {
+                GroqPanel.Enabled = true;
+            }
+        }
+
+        //asks the Groq API which reasoning effort levels the model in the Groq model selector
+        //supports and fills the effort dropdown with them, the models endpoints do not report
+        //capabilities so the fetch uses a rejected probe request, see Groq.FetchReasoningEffortLevelsAsync
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GroqReasoningLoadButton_Click(object sender, EventArgs e)
+        {
+            string apiKey = GroqAPIKeyTextBox.Text;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                apiKey = UserSettingsManager.Settings.GroqAPIKey;
+            }
+            string model = GroqModelComboBox.Text;
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(model))
+            {
+                _bBBlog.Info("Reasoning levels requested without an API key or model");
+                MessageBox.Show("Select a Groq model and enter a Groq API key first", "Reasoning effort", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            GroqReasoningLoadButton.Enabled = false;
+            GroqPanel.Enabled = false;
+            List<string> levels;
+            string fetchError;
+            try
+            {
+                (levels, fetchError) = await Groq.FetchReasoningEffortLevelsAsync(apiKey, model);
+            }
+            finally
+            {
+                GroqReasoningLoadButton.Enabled = true;
+                GroqPanel.Enabled = true;
+            }
+            if (levels == null)
+            {
+                //show Groq's own reason, a 401 for example means the key was rejected
+                MessageBox.Show($"Groq did not report the reasoning levels for this model:\r\n\r\n{fetchError}", "Reasoning effort", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            if (levels.Count < 1)
+            {
+                _bBBlog.Info($"Groq reports {model} has no reasoning settings");
+            }
+            //remember the levels for this model, an empty list caches "no reasoning settings" too
+            UserSettingsManager.Settings.GroqReasoningLevelsCache ??= [];
+            UserSettingsManager.Settings.GroqReasoningLevelsCache[model] = levels;
+            UserSettingsManager.SaveSettings();
+            ApplyCachedGroqReasoningLevels(model);
+            if (levels.Count < 1)
+            {
+                MessageBox.Show($"The model \"{model}\" has no reasoning effort settings.", "Reasoning effort", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            _bBBlog.Info($"Loaded {levels.Count} reasoning levels for {model}");
+        }
+
+        //refills the Groq reasoning effort selector with the levels cached for a model, the current
+        //pick is kept when the model also supports it. Returns false when the model was never
+        //fetched, the caller then leaves the list as it is until Load levels probes the API
+        [SupportedOSPlatform("windows10.0.10240")]
+        private bool ApplyCachedGroqReasoningLevels(string model)
+        {
+            Dictionary<string, List<string>> cache = UserSettingsManager.Settings.GroqReasoningLevelsCache;
+            if (cache == null || string.IsNullOrEmpty(model) || !cache.TryGetValue(model, out List<string> levels) || levels == null)
+            {
+                return false;
+            }
+            string previousSelection = GroqReasoningComboBox.Text;
+            GroqReasoningComboBox.Items.Clear();
+            GroqReasoningComboBox.Items.Add("Auto (model default)");
+            foreach (string level in levels)
+            {
+                GroqReasoningComboBox.Items.Add(level);
+            }
+            int index = GroqReasoningComboBox.FindStringExact(previousSelection);
+            GroqReasoningComboBox.SelectedIndex = index >= 0 ? index : 0;
+            return true;
+        }
+
+        //when the user picks another Groq model, show the reasoning levels cached for it, no API call
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void GroqModelComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            //a model that was never probed has no known levels. Leaving the list of the previous
+            //model up makes it look like Groq answered for this one, so go back to the built-in items
+            if (!ApplyCachedGroqReasoningLevels(GroqModelComboBox.Text))
+            {
+                string previousSelection = GroqReasoningComboBox.Text;
+                GroqReasoningComboBox.Items.Clear();
+                GroqReasoningComboBox.Items.AddRange(new object[] { "Auto (model default)", "Minimal", "Low", "Medium", "High" });
+                int index = GroqReasoningComboBox.FindStringExact(previousSelection);
+                GroqReasoningComboBox.SelectedIndex = index >= 0 ? index : 0;
+                _bBBlog.Info($"No cached reasoning levels for {GroqModelComboBox.Text}, using the built-in list until Load levels");
+            }
+        }
+
+        //sends one small real chat request with the values currently in the Groq panel so the
+        //provider itself confirms the key, model, temperature, max tokens and reasoning effort
+        //all work together, obvious local range errors are reported without calling the API
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GroqTestSettingsButton_Click(object sender, EventArgs e)
+        {
+            string apiKey = GroqAPIKeyTextBox.Text;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                apiKey = UserSettingsManager.Settings.GroqAPIKey;
+            }
+            string model = GroqModelComboBox.Text;
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(model))
+            {
+                _bBBlog.Info("Groq settings test requested without an API key or model");
+                MessageBox.Show("Enter a Groq API key and select a model first", "Groq settings test", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            //empty boxes fall back to the saved values, the parse helpers reject junk input too
+            float temperature = ParseFloatOrDefault(GroqTemperatureTextBox.Text, UserSettingsManager.Settings.GroqTemperature);
+            int maxTokens = ParseIntOrDefault(GroqMaxTokensTextBox.Text, UserSettingsManager.Settings.GroqMaxTokens);
+            if (temperature < 0 || temperature > 2)
+            {
+                _bBBlog.Info("Groq settings test blocked by out of range temperature: " + temperature);
+                MessageBox.Show("Temperature must be between 0 and 2", "Groq settings test", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (maxTokens < 1)
+            {
+                _bBBlog.Info("Groq settings test blocked by invalid max tokens: " + maxTokens);
+                MessageBox.Show("Max tokens must be at least 1", "Groq settings test", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            string reasoningEffort = GroqReasoningComboBox.SelectedIndex > 0 ? GroqReasoningComboBox.Text : "";
+            GroqTestSettingsButton.Enabled = false;
+            GroqPanel.Enabled = false;
+            (bool success, string error) result;
+            try
+            {
+                result = await Groq.TestSettingsAsync(apiKey, model, temperature, maxTokens, reasoningEffort);
+            }
+            finally
+            {
+                GroqTestSettingsButton.Enabled = true;
+                GroqPanel.Enabled = true;
+            }
+            if (result.success)
+            {
+                _bBBlog.Info("Groq settings test passed");
+                MessageBox.Show("Groq accepted all the current settings.", "Groq settings test", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                _bBBlog.Error("Groq settings test failed: " + result.error);
+                MessageBox.Show("Groq rejected these settings:\r\n\r\n" + result.error, "Groq settings test", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void AzurePanel_Validating(object sender, CancelEventArgs e)
         {
             if (AzurePanel.Visible)
@@ -2034,21 +2810,21 @@ namespace BanterBrain_Buddy
                     else
                     {
                         //might as well save since its a valid key
-                        Properties.Settings.Default.AzureAPIKeyTextBox = AzureAPIKeyTextBox.Text;
-                        Properties.Settings.Default.Save();
+                        UserSettingsManager.Settings.AzureAPIKeyTextBox = AzureAPIKeyTextBox.Text;
+                        UserSettingsManager.SaveSettings();
                     }
                 }
                 else
                 {
                     //its empty so lets save it
-                    Properties.Settings.Default.AzureAPIKeyTextBox = "";
-                    Properties.Settings.Default.Save();
+                    UserSettingsManager.Settings.AzureAPIKeyTextBox = "";
+                    UserSettingsManager.SaveSettings();
                 }
 
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void ElevenLabsPanel_Validating(object sender, CancelEventArgs e)
         {
             if (ElevenLabsPanel.Visible)
@@ -2072,20 +2848,21 @@ namespace BanterBrain_Buddy
                     else
                     {
                         //might as well save since its a valid key
-                        Properties.Settings.Default.ElevenLabsAPIkey = ElevenlabsAPIKeyTextBox.Text;
-                        Properties.Settings.Default.Save();
+                        UserSettingsManager.Settings.ElevenLabsAPIkey = ElevenlabsAPIKeyTextBox.Text;
+                        UserSettingsManager.Settings.ElevenLabsModel = ElevenLabsModelComboBox.Text;
+                        UserSettingsManager.SaveSettings();
                     }
                 }
                 else
                 {
                     //its empty so lets save it 
-                    Properties.Settings.Default.ElevenLabsAPIkey = "";
-                    Properties.Settings.Default.Save();
+                    UserSettingsManager.Settings.ElevenLabsAPIkey = "";
+                    UserSettingsManager.SaveSettings();
                 }
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private async void AuthorizeBotTwitch_Click(object sender, EventArgs e)
         {
             //lets not block everything, but lets try get a Twitch Auth token.
@@ -2102,27 +2879,38 @@ namespace BanterBrain_Buddy
             //channel.subscription.message (channel:read:subscriptions) to get sub message events
             //channel.cheer (bits:read) to get information on cheered bits
             //channel.follow (moderator:read:followers) to get who followed a channel
-            //channel.channel_points_automatic_reward_redemption.add (channel:read:redemptions) to get automatic reward redemptions by viewers
-            //channel.channel_points_custom_reward_redemption.add (channel:read:redemptions) to get custom reward redemptions by viewers
+            //channel.channel_points_automatic_reward_redemption.add (channel:read:redemptions) to get automatic reward redemptions by MyTwitchNotableViewers
+            //channel.channel_points_custom_reward_redemption.add (channel:read:redemptions) to get custom reward redemptions by MyTwitchNotableViewers
 
-            var twitchAPIResult = await twitchAPI.GetTwitchAuthToken([
-                    //API scope to send text to chat
-                    "user:write:chat"
-                //EventSub scopes for subscription types to read chat, get subscription events, read when people cheer (bits) and follower events
-                ]);
-
-            if (!twitchAPIResult)
+            try
             {
-                _bBBlog.Error("Issue with getting auth token. Check logs for more information.");
-                MessageBox.Show($"Issue with getting Auth token. Check logs for more information.", "Twitch Authorization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                var twitchAPIResult = await twitchAPI.GetTwitchAuthToken([
+                        //API scope to send text to chat
+                        "user:write:chat"
+                    //EventSub scopes for subscription types to read chat, get subscription events, read when people cheer (bits) and follower events
+                    ]);
+
+                if (!twitchAPIResult)
+                {
+                    _bBBlog.Error("Issue with getting auth token. Check logs for more information.");
+                    MessageBox.Show($"Issue with getting Auth token. Check logs for more information.", "Twitch Authorization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                else
+                {
+                    TwitchBotAuthKey.Text = twitchAPI.TwitchAccessToken;
+                    //auto-fill the bot account name that was just authorized
+                    if (!string.IsNullOrWhiteSpace(twitchAPI.TwitchAuthorizedUserName))
+                        TwitchBotName.Text = twitchAPI.TwitchAuthorizedUserName;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                TwitchBotAuthKey.Text = twitchAPI.TwitchAccessToken;
+                _bBBlog.Error("Twitch Bot authorization failed: " + ex.Message);
+                MessageBox.Show("Twitch authorization failed: " + ex.Message, "Twitch Authorization Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void TTSAudioOutputComboBox_SelectedIndexChanged(object sender, EventArgs e)
         {
             //get the device volume
@@ -2136,11 +2924,11 @@ namespace BanterBrain_Buddy
             {
                 SpeakerDeviceVolumeTrackBar.Value = 0;
             }
-            Properties.Settings.Default.TTSAudioOutput = TTSAudioOutputComboBox.Text;
-            Properties.Settings.Default.Save();
+            UserSettingsManager.Settings.TTSAudioOutput = TTSAudioOutputComboBox.Text;
+            UserSettingsManager.SaveSettings();
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void VolumeTrackBar_ValueChanged(object sender, EventArgs e)
         {
             personaEdited = true;
@@ -2148,7 +2936,7 @@ namespace BanterBrain_Buddy
             TTSVoiceLevel.Text = VolumeTrackBar.Value.ToString();
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void RateTrackBar_ValueChanged(object sender, EventArgs e)
         {
             personaEdited = true;
@@ -2169,13 +2957,13 @@ namespace BanterBrain_Buddy
             return null; // Device not found or an error occurred
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void SpeakerDeviceVolumeTrackBar_ValueChanged(object sender, EventArgs e)
         {
             OutputVolumeLabel.Text = SpeakerDeviceVolumeTrackBar.Value.ToString() + "%";
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void PitchTrackBar_ValueChanged(object sender, EventArgs e)
         {
             personaEdited = true;
@@ -2185,7 +2973,7 @@ namespace BanterBrain_Buddy
             TTSPitchLevel.Text = PitchTrackBar.Value.ToString();
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void PitchTrackBar_ScrollSnapToTen(object sender, EventArgs e)
         {
             // Calculate the nearest multiple of 10
@@ -2205,6 +2993,20 @@ namespace BanterBrain_Buddy
                     PitchTrackBar.Value += (10 - remainder);
                 }
             }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void ElevenLabsModelComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            _bBBlog.Info("ElevenLabs model changed to " + ElevenLabsModelComboBox.Text);
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void TwitchAuthServerConfig_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            _bBBlog.Info("Twitch Auth server config changed to " + TwitchAuthServerConfig.Text);
+            UserSettingsManager.Settings.TwitchAuthServerConfig = TwitchAuthServerConfig.Text;
+            UserSettingsManager.SaveSettings();
         }
     }
 }

@@ -3,7 +3,6 @@ using ElevenLabs.User;
 using ElevenLabs.Voices;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
-using OpenAI_API.Moderation;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -23,8 +22,15 @@ namespace BanterBrain_Buddy
 
         private int SelectedOutputDevice;
 
+        private SettingsManager UserSettingsManager = SettingsManager.Instance;
+
         private void SetSelectedOutputDevice(string OutputDevice)
         {
+            if (string.IsNullOrEmpty(OutputDevice))
+            {
+                _bBBlog.Warn("No output device given for ElevenLabs TTS, using the default device");
+                return;
+            }
             _bBBlog.Info($"Setting selected output device for Native TTS to: {OutputDevice}");
             for (int i = 0; i < NAudio.Wave.WaveOut.DeviceCount; i++)
             {
@@ -37,7 +43,7 @@ namespace BanterBrain_Buddy
             }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         public async Task<bool> ElevenLabsTTS(string text, string outputDevice, string tmpVoice, int similarity, int stability, int style, int volumeBoost)
         {
             var api = new ElevenLabsClient(ElevelLabsAPIKey);
@@ -55,10 +61,16 @@ namespace BanterBrain_Buddy
             }
 
             var voice = await api.VoicesEndpoint.GetVoiceAsync(voiceId);
-            VoiceSettings voiceSettings = new(similarity / 100f, stability / 100f, false, style / 100f);
+            VoiceSettings voiceSettings = new()
+            {
+                SimilarityBoost = similarity / 100f,
+                Stability = stability / 100f,
+                SpeakerBoost = false,
+                Style = style / 100f
+            };
             // var voiceSettings = await api.VoicesEndpoint.GetDefaultVoiceSettingsAsync();
-            var editVoice = api.VoicesEndpoint.EditVoiceSettingsAsync(voiceId, voiceSettings);
-            if (editVoice.Result)
+            //await instead of .Result, blocking a UI thread context on an async call can deadlock
+            if (await api.VoicesEndpoint.EditVoiceSettingsAsync(voiceId, voiceSettings))
             {
                 _bBBlog.Info($"Voice settings updated for {voice.Name}");
             }
@@ -69,7 +81,28 @@ namespace BanterBrain_Buddy
             }
             //this returns in mp3 format...pfft
             //here we should set the model to the one we want to use
-            var convertedText = await api.TextToSpeechEndpoint.TextToSpeechAsync(text, voice, voiceSettings, ElevenLabs.Models.Model.MultiLingualV2);
+            ElevenLabs.Models.Model modelToUse = null;
+            if (UserSettingsManager.Settings.ElevenLabsModel.StartsWith("Multilingual V2"))
+            {
+                _bBBlog.Info("Using Multilingual V2 model");
+                modelToUse = ElevenLabs.Models.Model.MultiLingualV2;
+            } else if (UserSettingsManager.Settings.ElevenLabsModel.StartsWith("Turbo V2.5"))
+            {
+                _bBBlog.Info("Using Turbo V2.5 model");
+                modelToUse = ElevenLabs.Models.Model.TurboV2_5;
+            }
+            else if (UserSettingsManager.Settings.ElevenLabsModel.StartsWith("Turbo V2"))
+            {
+                _bBBlog.Info("Using Turbo V2 model");
+                modelToUse = ElevenLabs.Models.Model.EnglishTurboV2;
+            }
+            else
+            {
+                _bBBlog.Info("Defaulting to Multilingual V2 model");
+                modelToUse = ElevenLabs.Models.Model.MultiLingualV2;
+            }
+
+            var convertedText = await api.TextToSpeechEndpoint.TextToSpeechAsync(text, voice, voiceSettings, modelToUse);
             var mp3Data = convertedText.ClipData.ToArray();
             MemoryStream ms = new(mp3Data)
             {
@@ -105,6 +138,11 @@ namespace BanterBrain_Buddy
             {
                 await Task.Delay(500);
             }
+            //release the audio device and streams, they were leaking on every spoken line
+            waveOut.Dispose();
+            waveStream.Dispose();
+            WavStream.Dispose();
+            ms.Dispose();
             return true;
         }
 
@@ -140,7 +178,8 @@ namespace BanterBrain_Buddy
                 // Process the voices...
                 foreach (var voice in voices)
                 {
-                    _elevenLabVoiceList.Add(voice.Name, voice.Id);
+                    //indexer not Add, ElevenLabs allows duplicate voice names and Add would throw
+                    _elevenLabVoiceList[voice.Name] = voice.Id;
                     ElevenLabVoices.Add(voice.Id + ";" + voice.Name);
                 }
                 return ElevenLabVoices;

@@ -25,21 +25,42 @@ namespace BanterBrain_Buddy
 
         private readonly HttpListener _listener;
 
+        //HttpListener URL prefixes conflict machine-wide. An abandoned authorization attempt (browser
+        //closed before approving, or Broadcaster and Bot authorized back-to-back) leaves the previous
+        //listener's prefix still registered, so the next Start() throws "conflicts with an existing
+        //registration" and the browser falls through to an HTTP.sys 404 page. Keep a single static
+        //handle so every new server can release the old registration before listening again.
+        private static HttpListener _activeListener;
+
+        private static void ReleaseActiveListener()
+        {
+            var old = _activeListener;
+            if (old == null) return;
+            _activeListener = null;
+            try { if (old.IsListening) old.Stop(); } catch (Exception ex) { _bBBlog.Debug("Stop previous listener: " + ex.Message); }
+            try { old.Abort(); } catch { }
+            try { old.Close(); } catch { }
+        }
+
         public TwitchAuthWebserver(string uri)
         {
+            ReleaseActiveListener();
             _listener = new HttpListener();
             if (uri.Last() != '/')
             {
-                uri += "/redirect/";
+                //HttpListener requires the prefix to end with '/'. Bind to the root of the configured
+                //URL so it matches the plain redirect URI (e.g. http://localhost:8080) sent to Twitch.
+                uri += "/";
             }
             _bBBlog.Info("Listening on: " + uri);
             _listener.Prefixes.Add(uri);
+            _activeListener = _listener;
         }
 
         public async Task<Authorization> AuthorizationListen()
         {
             _bBBlog.Info("Authorization code OAUTH starting");
-            _listener.Start();
+            StartListenerOrThrow();
             var result = await OnAuthorizationRequest();
             return result;
         }
@@ -47,15 +68,42 @@ namespace BanterBrain_Buddy
         public async Task<Authorization> ImplicitListen()
         {
             _bBBlog.Info("Implicit grant OAUTH starting");
-            _listener.Start();
+            StartListenerOrThrow();
             var result = await OnImplicitRequest();
             return result;
+        }
+
+        //If Start still fails after the previous registration was released (a stray BanterBrain process
+        //or another app holds the port), free our own half-registered listener so it doesn't linger and
+        //surface as a 404, then rethrow so the UI reports the real reason.
+        private void StartListenerOrThrow()
+        {
+            try
+            {
+                _listener.Start();
+            }
+            catch (HttpListenerException ex)
+            {
+                _bBBlog.Error("Failed to start auth listener: " + ex.Message);
+                ReleaseCurrentListener();
+                throw;
+            }
+        }
+
+        //Fully deregister the HTTP.sys prefix (Stop alone is not enough) and clear the static handle.
+        private void ReleaseCurrentListener()
+        {
+            try { if (_listener.IsListening) _listener.Stop(); } catch { }
+            try { _listener.Abort(); } catch { }
+            try { _listener.Close(); } catch { }
+            if (ReferenceEquals(_activeListener, _listener))
+                _activeListener = null;
         }
 
         public void Stop()
         {
             _bBBlog.Debug("Stopping listener");
-            _listener.Stop();
+            ReleaseCurrentListener();
         }   
 
         private async Task<Authorization> OnImplicitRequest()
@@ -112,7 +160,7 @@ namespace BanterBrain_Buddy
                 catch (Exception ex)
                 {
                     _bBBlog.Error("Webserver: " + ex.ToString());
-                    _listener.Stop();
+                    ReleaseCurrentListener();
                 }
 
             }
@@ -148,7 +196,7 @@ namespace BanterBrain_Buddy
                 catch (Exception ex)
                 {
                     _bBBlog.Error("Webserver: " + ex.ToString());
-                    _listener.Stop();
+                    ReleaseCurrentListener();
                 }
 
             }

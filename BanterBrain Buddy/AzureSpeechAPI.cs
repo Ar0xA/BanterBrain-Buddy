@@ -39,6 +39,8 @@ namespace BanterBrain_Buddy
         //global list to speed stuff up
         List<AzureVoices> _azureRegionVoicesList = [];
 
+        private SettingsManager UserSettingsManager = SettingsManager.Instance;
+
         //this is a test to see if the API is working, it tries to say something to a null device but the result is what matters
         public async Task<bool> AzureVerifyAPI()
         {
@@ -91,6 +93,17 @@ namespace BanterBrain_Buddy
                 _bBBlog.Info($"Found {result.Voices.Count} voices");
                 foreach (var voice in result.Voices)
                 {
+                    //RegionInfo throws on locales with non-standard region parts (e.g. zh-Hans-CN),
+                    //fall back to the raw locale instead of killing the whole voice listing
+                    string localeDisplayName;
+                    try
+                    {
+                        localeDisplayName = new RegionInfo(voice.Locale).ThreeLetterISORegionName;
+                    }
+                    catch (ArgumentException)
+                    {
+                        localeDisplayName = voice.Locale;
+                    }
                     var tmpVoice = new AzureVoices()
                     {
                         Locale = voice.Locale,
@@ -98,7 +111,7 @@ namespace BanterBrain_Buddy
                         Name = voice.Name,
                         Gender = voice.Gender.ToString(),
                         StyleList = new List<string>(voice.StyleList),
-                        LocaleDisplayname = new RegionInfo(voice.Locale).ThreeLetterISORegionName
+                        LocaleDisplayname = localeDisplayName
                     };
                     azureRegionVoicesList.Add(tmpVoice);
                 }
@@ -115,6 +128,11 @@ namespace BanterBrain_Buddy
         //this sets "SelectedInputDevice" to the correct input/microphone or capture device
         private void SetSelectedInputDevice(string InputDevice)
         {
+            if (string.IsNullOrEmpty(InputDevice))
+            {
+                _bBBlog.Warn("No input device given for Azure STT, the default microphone will be used");
+                return;
+            }
             var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
             foreach (var device in
                      enumerator.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Capture, NAudio.CoreAudioApi.DeviceState.Active))
@@ -131,6 +149,11 @@ namespace BanterBrain_Buddy
         private void SetSelectedOutputDevice(string OutputDevice)
         {
             _bBBlog.Info($"Setting selected output device for Azure TTS to: {OutputDevice}");
+            if (string.IsNullOrEmpty(OutputDevice))
+            {
+                _bBBlog.Warn("No output device given for Azure TTS, no device will be selected");
+                return;
+            }
 
 
             var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
@@ -167,6 +190,12 @@ namespace BanterBrain_Buddy
 
             //now find the correct name associated with the selected voice
             var azureRegionVoicesList = await TTSGetAzureVoices();
+            //the voice fetch fails when the key/region is wrong, iterating null would crash
+            if (azureRegionVoicesList == null)
+            {
+                _bBBlog.Error("No Azure voices available, cannot initialize Azure TTS. Check your API key and region.");
+                return;
+            }
 
             //we need to do some parsing. Azure voices are in the format of "en-US-Guy-Azure" and the text we get is not.
             //what is returned is the usable voicename for Azure.
@@ -195,14 +224,22 @@ namespace BanterBrain_Buddy
             _bBBlog.Info($"Starting Azure Text To Speech, Speaking with: {AzureVoiceName}");
             if (!string.IsNullOrEmpty(AzureVoiceName))
             {
+                //SSML is XML: LLM answers and cheered messages can contain & < > etc, unescaped
+                //they make Azure reject the whole synthesis
+                string safeText = System.Security.SecurityElement.Escape(TextToSay);
+                //an empty style breaks the SSML (style="" is rejected), only add express-as when the
+                //persona actually has a style selected
+                string innerSpeech = safeText;
+                if (!string.IsNullOrWhiteSpace(AzureVoiceOptions))
+                {
+                    innerSpeech = $" <mstts:express-as style=\"{System.Security.SecurityElement.Escape(AzureVoiceOptions)}\" styledegree=\"1\"> \r\n{safeText}\r\n        </mstts:express-as>\r\n    ";
+                }
                 string SSMLText =
                
-                $"<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xmlns:mstts=\"https://www.w3.org/2001/mstts\" xmlns:emo=\"http://www.w3.org/2009/10/emotionml\" xml:lang=\"{Properties.Settings.Default.AzureLanguageComboBox}\">\r\n   " +
+                $"<speak version=\"1.0\" xmlns=\"http://www.w3.org/2001/10/synthesis\" xmlns:mstts=\"https://www.w3.org/2001/mstts\" xmlns:emo=\"http://www.w3.org/2009/10/emotionml\" xml:lang=\"{UserSettingsManager.Settings.AzureLanguageComboBox}\">\r\n   " +
                 $" <voice name=\"{AzureVoiceName}\">\r\n" +
                 $"<prosody rate=\"{AzureVoiceRate}%\" pitch= \"{AzureVoicePitch}%\" volume=\"{AzureVoiceVolume}%\"> \r\n" +
-                $" <mstts:express-as style=\"{AzureVoiceOptions}\" styledegree=\"1\"> \r\n" + 
-                $"{TextToSay}\r\n        " +
-                "</mstts:express-as>\r\n    " +
+                $"{innerSpeech}" +
                 "</prosody>" +
                 "</voice>\r\n" +
                 "</speak>";
@@ -213,8 +250,14 @@ namespace BanterBrain_Buddy
                 _azureSpeechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm);
                 if (outDevice == null)
                 {
-                    _bBBlog.Error("No output device selected for Azure TTS. It should be set to: " + Properties.Settings.Default.TTSAudioOutput);
-                    SetSelectedOutputDevice(Properties.Settings.Default.TTSAudioOutput);
+                    _bBBlog.Error("No output device selected for Azure TTS. It should be set to: " + UserSettingsManager.Settings.TTSAudioOutput);
+                    SetSelectedOutputDevice(UserSettingsManager.Settings.TTSAudioOutput);
+                }
+                if (outDevice == null)
+                {
+                    //the configured device is gone (unplugged/renamed), speaking into null would NRE
+                    _bBBlog.Error("Still no matching output device found, cannot speak via Azure TTS");
+                    return false;
                 }
                 _bBBlog.Debug($"SelectedOutputdevice: {outDevice.ID}");
                 var tmpAudioConfig = AudioConfig.FromSpeakerOutput(outDevice.ID);
@@ -285,8 +328,17 @@ namespace BanterBrain_Buddy
             _azureSpeechConfig.SpeechRecognitionLanguage = AzureLanguage; //default language
 
             SetSelectedInputDevice(InputDevice);
-            _bBBlog.Info("selected audio input device for Azure: " + inDevice.FriendlyName);
-            _azureAudioConfig = AudioConfig.FromMicrophoneInput(inDevice.ID);
+            if (inDevice != null)
+            {
+                _bBBlog.Info("selected audio input device for Azure: " + inDevice.FriendlyName);
+                _azureAudioConfig = AudioConfig.FromMicrophoneInput(inDevice.ID);
+            }
+            else
+            {
+                //the configured mic was unplugged/renamed, fall back to the system default instead of NRE
+                _bBBlog.Warn("No matching Azure input device found, using the system default microphone");
+                _azureAudioConfig = AudioConfig.FromDefaultMicrophoneInput();
+            }
             _azureSpeechRecognizer = new SpeechRecognizer(_azureSpeechConfig, _azureAudioConfig);
         }
 
