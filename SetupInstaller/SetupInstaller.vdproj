@@ -1,4 +1,4 @@
-﻿"DeployProject"
+"DeployProject"
 {
 "VSVersion" = "3:800"
 "ProjectType" = "8:{978C614F-708E-4E1A-B201-565925725DBA}"
@@ -28,6 +28,12 @@
         "Entry"
         {
         "MsmKey" = "8:_E1CE2C51A25241F9A7C956AA17392DAD"
+        "OwnerKey" = "8:_UNDEFINED"
+        "MsmSig" = "8:_UNDEFINED"
+        }
+        "Entry"
+        {
+        "MsmKey" = "8:_E5DB9747EE2B43DE8C15CD66512EA2FB"
         "OwnerKey" = "8:_UNDEFINED"
         "MsmSig" = "8:_UNDEFINED"
         }
@@ -71,11 +77,11 @@
         "DisplayName" = "8:Release"
         "IsDebugOnly" = "11:FALSE"
         "IsReleaseOnly" = "11:TRUE"
-        "OutputFilename" = "8:Release\\BanterBrainInstaller-1.0.6.msi"
+        "OutputFilename" = "8:Release\\BanterBrainInstaller-1.0.12.msi"
         "PackageFilesAs" = "3:2"
         "PackageFileSize" = "3:-2147483648"
         "CabType" = "3:1"
-        "Compression" = "3:3"
+        "Compression" = "3:2"
         "SignOutput" = "11:FALSE"
         "CertificateFile" = "8:"
         "PrivateKeyFile" = "8:"
@@ -188,6 +194,26 @@
             "IsDependency" = "11:FALSE"
             "IsolateTo" = "8:"
             }
+            "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_F3A7C1D29B4E4A56B8C0D1E2F3A4B5C6"
+            {
+            "SourcePath" = "8:..\\BanterBrain Buddy\\settings.json.example"
+            "TargetName" = "8:settings.json.example"
+            "Tag" = "8:"
+            "Folder" = "8:_2017D992050C46268B95DFBA3A32EE09"
+            "Condition" = "8:"
+            "Transitive" = "11:FALSE"
+            "Vital" = "11:FALSE"
+            "ReadOnly" = "11:FALSE"
+            "Hidden" = "11:FALSE"
+            "System" = "11:FALSE"
+            "Permanent" = "11:FALSE"
+            "SharedLegacy" = "11:FALSE"
+            "PackageAs" = "3:1"
+            "Register" = "3:1"
+            "Exclude" = "11:FALSE"
+            "IsDependency" = "11:FALSE"
+            "IsolateTo" = "8:"
+            }
         }
         "FileType"
         {
@@ -209,7 +235,7 @@
             "{1525181F-901A-416C-8A58-119130FE478E}:_49D9A9BB410E403595DB3783253EAD51"
             {
             "Name" = "8:#1919"
-            "AlwaysCreate" = "11:FALSE"
+            "AlwaysCreate" = "11:TRUE"
             "Condition" = "8:"
             "Transitive" = "11:FALSE"
             "Property" = "8:ProgramMenuFolder"
@@ -220,7 +246,7 @@
             "{1525181F-901A-416C-8A58-119130FE478E}:_9EF99CB1C9174D5D9C6C75FE78E0B068"
             {
             "Name" = "8:#1916"
-            "AlwaysCreate" = "11:FALSE"
+            "AlwaysCreate" = "11:TRUE"
             "Condition" = "8:"
             "Transitive" = "11:FALSE"
             "Property" = "8:DesktopFolder"
@@ -244,19 +270,19 @@
         {
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:BanterBrain"
-        "ProductCode" = "8:{49A4EDC8-0C47-4E72-BA5B-7DEA0E31CC4C}"
-        "PackageCode" = "8:{B9CED1B2-F0F3-4CAF-9CEA-79EA872B57FD}"
+        "ProductCode" = "8:{C42C8D54-7AEA-4727-9C96-804B4791B104}"
+        "PackageCode" = "8:{E6629D85-1EA0-4317-9514-091575FE9322}"
         "UpgradeCode" = "8:{4B635E66-0C4A-48F5-B28C-7107F31B1F77}"
         "AspNetVersion" = "8:2.0.50727.0"
         "RestartWWWService" = "11:FALSE"
         "RemovePreviousVersions" = "11:FALSE"
         "DetectNewerInstalledVersion" = "11:TRUE"
         "InstallAllUsers" = "11:FALSE"
-        "ProductVersion" = "8:1.0.6"
+        "ProductVersion" = "8:1.0.12"
         "Manufacturer" = "8:BanterBrain"
         "ARPHELPTELEPHONE" = "8:"
         "ARPHELPLINK" = "8:https://discord.banterbrain.tv"
-        "Title" = "8:BanterBrain Buddy 1.0.6"
+        "Title" = "8:BanterBrain Buddy 1.0.12"
         "Subject" = "8:"
         "ARPCONTACT" = "8:WhiskerWeirdo"
         "Keywords" = "8:"
@@ -365,7 +391,7 @@
         }
         "Shortcut"
         {
-            "{970C0BB2-C7D0-45D7-ABFA-7EC378858BC0}:_B68703FE51CE4A3381865F2AA0D42EDF"
+            "{970C0BB2-C7D0-45D7-ABFA-7EC378858BC0}:_A70C7BD5730648B880FFC2035ABFC38E"
             {
             "Name" = "8:BanterBrain Buddy"
             "Arguments" = "8:"
@@ -373,13 +399,13 @@
             "ShowCmd" = "3:1"
             "IconIndex" = "3:0"
             "Transitive" = "11:FALSE"
-            "Target" = "8:_B6EA7F4607FC4037AA3DE3277F7274AA"
+            "Target" = "8:_E5DB9747EE2B43DE8C15CD66512EA2FB"
             "Folder" = "8:_49D9A9BB410E403595DB3783253EAD51"
             "WorkingFolder" = "8:_2017D992050C46268B95DFBA3A32EE09"
             "Icon" = "8:_8747C7D2FDE94B7689519441D8616BB7"
             "Feature" = "8:"
             }
-            "{970C0BB2-C7D0-45D7-ABFA-7EC378858BC0}:_D4305EE2531B457AA4244C75EC4E0A7C"
+            "{970C0BB2-C7D0-45D7-ABFA-7EC378858BC0}:_D76721E2F2B44025849A3C344C886E8F"
             {
             "Name" = "8:BanterBrain Buddy"
             "Arguments" = "8:"
@@ -387,7 +413,7 @@
             "ShowCmd" = "3:1"
             "IconIndex" = "3:0"
             "Transitive" = "11:FALSE"
-            "Target" = "8:_B6EA7F4607FC4037AA3DE3277F7274AA"
+            "Target" = "8:_E5DB9747EE2B43DE8C15CD66512EA2FB"
             "Folder" = "8:_9EF99CB1C9174D5D9C6C75FE78E0B068"
             "WorkingFolder" = "8:_2017D992050C46268B95DFBA3A32EE09"
             "Icon" = "8:_8747C7D2FDE94B7689519441D8616BB7"
@@ -978,9 +1004,9 @@
         }
         "ProjectOutput"
         {
-            "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_B6EA7F4607FC4037AA3DE3277F7274AA"
+            "{5259A561-127C-4D43-A0A1-72F10C7B3BF8}:_E5DB9747EE2B43DE8C15CD66512EA2FB"
             {
-            "SourcePath" = "8:..\\BanterBrain Buddy\\obj\\Release\\net8.0-windows7.0\\apphost.exe"
+            "SourcePath" = "8:..\\BanterBrain Buddy\\obj\\Release\\net8.0-windows10.0.17763.0\\apphost.exe"
             "TargetName" = "8:"
             "Tag" = "8:"
             "Folder" = "8:_2017D992050C46268B95DFBA3A32EE09"

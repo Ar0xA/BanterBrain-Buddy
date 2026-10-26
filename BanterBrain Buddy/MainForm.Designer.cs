@@ -50,13 +50,20 @@ namespace BanterBrain_Buddy
             TwitchStatusLabel = new Label();
             BBBTabs = new TabControl();
             StreamingSettingsTab = new TabPage();
+            TwitchMockCheckBox = new CheckBox();
             TwitchLLMLanguageGroupBox = new GroupBox();
             CustomResponseButton = new Button();
             TwitchLLMLanguageComboBox = new ComboBox();
             LLMGroupSettingsGroupBox = new GroupBox();
+            LLMStartNewConvo = new Button();
             LLMResponseSelecter = new ComboBox();
             label7 = new Label();
             TwitchSettingsGroupBox = new GroupBox();
+            groupBox2 = new GroupBox();
+            NotableViewersButton = new Button();
+            groupBox1 = new GroupBox();
+            TwitchBadWordFilterCheckBox = new CheckBox();
+            WordFilterButton = new Button();
             TwitchResponseSettings = new GroupBox();
             TwitchResponseToChatDelayTextBox = new TextBox();
             TwitchPostResponseToChatDelayLabel = new Label();
@@ -133,6 +140,8 @@ namespace BanterBrain_Buddy
             TwitchLLMLanguageGroupBox.SuspendLayout();
             LLMGroupSettingsGroupBox.SuspendLayout();
             TwitchSettingsGroupBox.SuspendLayout();
+            groupBox2.SuspendLayout();
+            groupBox1.SuspendLayout();
             TwitchResponseSettings.SuspendLayout();
             TwitchSoundsSettings.SuspendLayout();
             TwitchChannelPointsSettings.SuspendLayout();
@@ -272,12 +281,19 @@ namespace BanterBrain_Buddy
             // 
             // StreamingSettingsTab
             // 
+            StreamingSettingsTab.Controls.Add(TwitchMockCheckBox);
             StreamingSettingsTab.Controls.Add(TwitchLLMLanguageGroupBox);
             StreamingSettingsTab.Controls.Add(LLMGroupSettingsGroupBox);
             StreamingSettingsTab.Controls.Add(TwitchSettingsGroupBox);
             resources.ApplyResources(StreamingSettingsTab, "StreamingSettingsTab");
             StreamingSettingsTab.Name = "StreamingSettingsTab";
             StreamingSettingsTab.UseVisualStyleBackColor = true;
+            // 
+            // TwitchMockCheckBox
+            // 
+            resources.ApplyResources(TwitchMockCheckBox, "TwitchMockCheckBox");
+            TwitchMockCheckBox.Name = "TwitchMockCheckBox";
+            TwitchMockCheckBox.UseVisualStyleBackColor = true;
             // 
             // TwitchLLMLanguageGroupBox
             // 
@@ -305,11 +321,20 @@ namespace BanterBrain_Buddy
             // 
             // LLMGroupSettingsGroupBox
             // 
+            LLMGroupSettingsGroupBox.Controls.Add(LLMStartNewConvo);
             LLMGroupSettingsGroupBox.Controls.Add(LLMResponseSelecter);
             LLMGroupSettingsGroupBox.Controls.Add(label7);
             resources.ApplyResources(LLMGroupSettingsGroupBox, "LLMGroupSettingsGroupBox");
             LLMGroupSettingsGroupBox.Name = "LLMGroupSettingsGroupBox";
             LLMGroupSettingsGroupBox.TabStop = false;
+            // 
+            // LLMStartNewConvo
+            // 
+            resources.ApplyResources(LLMStartNewConvo, "LLMStartNewConvo");
+            LLMStartNewConvo.Name = "LLMStartNewConvo";
+            BBBToolTip.SetToolTip(LLMStartNewConvo, resources.GetString("LLMStartNewConvo.ToolTip"));
+            LLMStartNewConvo.UseVisualStyleBackColor = true;
+            LLMStartNewConvo.Click += LLMStartNewConvo_Click;
             // 
             // LLMResponseSelecter
             // 
@@ -326,6 +351,8 @@ namespace BanterBrain_Buddy
             // 
             // TwitchSettingsGroupBox
             // 
+            TwitchSettingsGroupBox.Controls.Add(groupBox2);
+            TwitchSettingsGroupBox.Controls.Add(groupBox1);
             TwitchSettingsGroupBox.Controls.Add(TwitchResponseSettings);
             TwitchSettingsGroupBox.Controls.Add(TwitchSoundsSettings);
             TwitchSettingsGroupBox.Controls.Add(TwitchAutoStart);
@@ -338,6 +365,42 @@ namespace BanterBrain_Buddy
             resources.ApplyResources(TwitchSettingsGroupBox, "TwitchSettingsGroupBox");
             TwitchSettingsGroupBox.Name = "TwitchSettingsGroupBox";
             TwitchSettingsGroupBox.TabStop = false;
+            // 
+            // groupBox2
+            // 
+            groupBox2.Controls.Add(NotableViewersButton);
+            resources.ApplyResources(groupBox2, "groupBox2");
+            groupBox2.Name = "groupBox2";
+            groupBox2.TabStop = false;
+            // 
+            // NotableViewersButton
+            // 
+            resources.ApplyResources(NotableViewersButton, "NotableViewersButton");
+            NotableViewersButton.Name = "NotableViewersButton";
+            NotableViewersButton.UseVisualStyleBackColor = true;
+            NotableViewersButton.Click += NotableViewersButton_Click;
+            // 
+            // groupBox1
+            // 
+            groupBox1.Controls.Add(TwitchBadWordFilterCheckBox);
+            groupBox1.Controls.Add(WordFilterButton);
+            resources.ApplyResources(groupBox1, "groupBox1");
+            groupBox1.Name = "groupBox1";
+            groupBox1.TabStop = false;
+            // 
+            // TwitchBadWordFilterCheckBox
+            // 
+            resources.ApplyResources(TwitchBadWordFilterCheckBox, "TwitchBadWordFilterCheckBox");
+            TwitchBadWordFilterCheckBox.Name = "TwitchBadWordFilterCheckBox";
+            TwitchBadWordFilterCheckBox.UseVisualStyleBackColor = true;
+            TwitchBadWordFilterCheckBox.CheckedChanged += BadWordFilterCheckBox_CheckedChanged;
+            // 
+            // WordFilterButton
+            // 
+            resources.ApplyResources(WordFilterButton, "WordFilterButton");
+            WordFilterButton.Name = "WordFilterButton";
+            WordFilterButton.UseVisualStyleBackColor = true;
+            WordFilterButton.Click += WordFilterButton_Click;
             // 
             // TwitchResponseSettings
             // 
@@ -785,7 +848,7 @@ namespace BanterBrain_Buddy
             // 
             downloadToolStripMenuItem.Name = "downloadToolStripMenuItem";
             resources.ApplyResources(downloadToolStripMenuItem, "downloadToolStripMenuItem");
-            downloadToolStripMenuItem.Click += downloadToolStripMenuItem_Click;
+            downloadToolStripMenuItem.Click += DownloadToolStripMenuItem_Click;
             // 
             // DiscordToolStripMenuItem
             // 
@@ -836,11 +899,15 @@ namespace BanterBrain_Buddy
             MicrophoneRecordGroupBox.ResumeLayout(false);
             BBBTabs.ResumeLayout(false);
             StreamingSettingsTab.ResumeLayout(false);
+            StreamingSettingsTab.PerformLayout();
             TwitchLLMLanguageGroupBox.ResumeLayout(false);
             LLMGroupSettingsGroupBox.ResumeLayout(false);
             LLMGroupSettingsGroupBox.PerformLayout();
             TwitchSettingsGroupBox.ResumeLayout(false);
             TwitchSettingsGroupBox.PerformLayout();
+            groupBox2.ResumeLayout(false);
+            groupBox1.ResumeLayout(false);
+            groupBox1.PerformLayout();
             TwitchResponseSettings.ResumeLayout(false);
             TwitchResponseSettings.PerformLayout();
             TwitchSoundsSettings.ResumeLayout(false);
@@ -950,6 +1017,13 @@ namespace BanterBrain_Buddy
         private GroupBox TwitchLLMLanguageGroupBox;
         private ComboBox TwitchLLMLanguageComboBox;
         private Button CustomResponseButton;
+        private GroupBox groupBox1;
+        private CheckBox TwitchBadWordFilterCheckBox;
+        private Button WordFilterButton;
+        private Button LLMStartNewConvo;
+        private GroupBox groupBox2;
+        private Button NotableViewersButton;
+        private CheckBox TwitchMockCheckBox;
     }
 }
 

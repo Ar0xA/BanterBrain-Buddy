@@ -24,7 +24,7 @@ namespace BanterBrain_Buddy
 
         private IKeyboardMouseEvents m_GlobalHook;
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         public void Subscribe()
         {
             m_GlobalHook = Hook.GlobalEvents();
@@ -36,7 +36,7 @@ namespace BanterBrain_Buddy
 
         public List<Keys> ReturnValue1 { get; set; }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void GlobalHookKeyDown(object sender, KeyEventArgs e)
         {
             //TODO: ALT is a bad idea, so fix that sometime
@@ -60,15 +60,33 @@ namespace BanterBrain_Buddy
 
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         public void Unsubscribe()
         {
-            m_GlobalHook.KeyDown -= GlobalHookKeyDown;
-            //It is recommened to dispose it
-            m_GlobalHook.Dispose();
+            //the escape key path calls this and Close() triggers FormClosing which calls it again,
+            //so guard against a null hook (form closed before Shown) and a double dispose
+            if (m_GlobalHook == null)
+            {
+                return;
+            }
+            try
+            {
+                m_GlobalHook.KeyDown -= GlobalHookKeyDown;
+                m_GlobalHook.KeyUp -= GlobalHookKeyUp;
+                //It is recommened to dispose it
+                m_GlobalHook.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+                _bBBlog.Debug("Hotkey hook already disposed");
+            }
+            finally
+            {
+                m_GlobalHook = null;
+            }
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         public void GlobalHookKeyUp(object sender, KeyEventArgs e)
         {
             _bBBlog.Info("Key Up event");
@@ -81,14 +99,14 @@ namespace BanterBrain_Buddy
         }
 
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void HotkeyForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             //Just incase something left over.
             Unsubscribe();
         }
 
-        [SupportedOSPlatform("windows6.1")]
+        [SupportedOSPlatform("windows10.0.10240")]
         private void HotkeyForm_Shown(object sender, EventArgs e)
         {
             DontPingTextBox.Focus();
