@@ -1,4 +1,4 @@
-﻿namespace BanterBrain_Buddy
+namespace BanterBrain_Buddy
 {
     partial class SettingsForm
     {
@@ -34,7 +34,8 @@
             System.Windows.Forms.TreeNode treeNode3 = new System.Windows.Forms.TreeNode("ElevenLabs");
             System.Windows.Forms.TreeNode treeNode4 = new System.Windows.Forms.TreeNode("Ollama LLM");
             System.Windows.Forms.TreeNode treeNode13 = new System.Windows.Forms.TreeNode("Groq");
-            System.Windows.Forms.TreeNode treeNode5 = new System.Windows.Forms.TreeNode("API Settings", new System.Windows.Forms.TreeNode[] { treeNode1, treeNode2, treeNode3, treeNode4, treeNode13 });
+            System.Windows.Forms.TreeNode treeNode14 = new System.Windows.Forms.TreeNode("Google AI");
+            System.Windows.Forms.TreeNode treeNode5 = new System.Windows.Forms.TreeNode("API Settings", new System.Windows.Forms.TreeNode[] { treeNode1, treeNode2, treeNode3, treeNode4, treeNode13, treeNode14 });
             System.Windows.Forms.TreeNode treeNode6 = new System.Windows.Forms.TreeNode("Native speech");
             System.Windows.Forms.TreeNode treeNode7 = new System.Windows.Forms.TreeNode("Personas");
             System.Windows.Forms.TreeNode treeNode8 = new System.Windows.Forms.TreeNode("Microphone");
@@ -195,6 +196,25 @@
             GroqReasoningLoadButton = new System.Windows.Forms.Button();
             GroqReasoningLabel = new System.Windows.Forms.Label();
             GroqTestSettingsButton = new System.Windows.Forms.Button();
+            GooglePanel = new System.Windows.Forms.Panel();
+            GoogleMaxTokensTextBox = new System.Windows.Forms.TextBox();
+            GoogleMaxTokensLabel = new System.Windows.Forms.Label();
+            GoogleTemperatureTextBox = new System.Windows.Forms.TextBox();
+            GoogleTemperatureLabel = new System.Windows.Forms.Label();
+            GoogleLoadModelsButton = new System.Windows.Forms.Button();
+            GoogleModelComboBox = new System.Windows.Forms.ComboBox();
+            GoogleModelLabel = new System.Windows.Forms.Label();
+            GoogleTestButton = new System.Windows.Forms.Button();
+            GoogleAPIKeyTextBox = new System.Windows.Forms.TextBox();
+            GoogleAPIKeyLabel = new System.Windows.Forms.Label();
+            label36 = new System.Windows.Forms.Label();
+            GoogleReasoningComboBox = new System.Windows.Forms.ComboBox();
+            GoogleReasoningLoadButton = new System.Windows.Forms.Button();
+            GoogleReasoningLabel = new System.Windows.Forms.Label();
+            GoogleVoiceModelLabel = new System.Windows.Forms.Label();
+            GoogleVoiceModelComboBox = new System.Windows.Forms.ComboBox();
+            GoogleLoadVoiceModelsButton = new System.Windows.Forms.Button();
+            GoogleTestSettingsButton = new System.Windows.Forms.Button();
             BBBToolTip = new System.Windows.Forms.ToolTip(components);
             ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
             splitContainer1.Panel1.SuspendLayout();
@@ -220,6 +240,7 @@
             AzurePanel.SuspendLayout();
             OllamaPanel.SuspendLayout();
             GroqPanel.SuspendLayout();
+            GooglePanel.SuspendLayout();
             SuspendLayout();
             // 
             // splitContainer1
@@ -245,6 +266,7 @@
             splitContainer1.Panel2.Controls.Add(AzurePanel);
             splitContainer1.Panel2.Controls.Add(OllamaPanel);
             splitContainer1.Panel2.Controls.Add(GroqPanel);
+            splitContainer1.Panel2.Controls.Add(GooglePanel);
             splitContainer1.Size = new System.Drawing.Size(800, 579);
             splitContainer1.SplitterDistance = 202;
             splitContainer1.TabIndex = 0;
@@ -264,6 +286,8 @@
             treeNode4.Text = "Ollama LLM";
             treeNode13.Name = "GroqLLM";
             treeNode13.Text = "Groq";
+            treeNode14.Name = "GoogleLLM";
+            treeNode14.Text = "Google AI";
             treeNode5.Name = "APISettings";
             treeNode5.Text = "API Settings";
             treeNode6.Name = "NativeSpeech";
@@ -1959,6 +1983,236 @@
             GroqTestSettingsButton.Click += GroqTestSettingsButton_Click;
             BBBToolTip.SetToolTip(GroqTestSettingsButton, "Sends one small chat request with the values in this panel so Groq confirms the key, model, temperature, max tokens and reasoning effort all work together.");
             // 
+            // GooglePanel
+            // 
+            GooglePanel.Controls.Add(GoogleVoiceModelComboBox);
+            GooglePanel.Controls.Add(GoogleVoiceModelLabel);
+            GooglePanel.Controls.Add(GoogleLoadVoiceModelsButton);
+            GooglePanel.Controls.Add(GoogleReasoningComboBox);
+            GooglePanel.Controls.Add(GoogleReasoningLoadButton);
+            GooglePanel.Controls.Add(GoogleReasoningLabel);
+            GooglePanel.Controls.Add(GoogleTestSettingsButton);
+            GooglePanel.Controls.Add(GoogleMaxTokensTextBox);
+            GooglePanel.Controls.Add(GoogleMaxTokensLabel);
+            GooglePanel.Controls.Add(GoogleTemperatureTextBox);
+            GooglePanel.Controls.Add(GoogleTemperatureLabel);
+            GooglePanel.Controls.Add(GoogleLoadModelsButton);
+            GooglePanel.Controls.Add(GoogleModelComboBox);
+            GooglePanel.Controls.Add(GoogleModelLabel);
+            GooglePanel.Controls.Add(GoogleTestButton);
+            GooglePanel.Controls.Add(GoogleAPIKeyTextBox);
+            GooglePanel.Controls.Add(GoogleAPIKeyLabel);
+            GooglePanel.Controls.Add(label36);
+            GooglePanel.Dock = System.Windows.Forms.DockStyle.Fill;
+            GooglePanel.Location = new System.Drawing.Point(0, 0);
+            GooglePanel.Name = "GooglePanel";
+            GooglePanel.Size = new System.Drawing.Size(594, 579);
+            GooglePanel.TabIndex = 39;
+            GooglePanel.Validating += GooglePanel_Validating;
+            // 
+            // label36
+            // 
+            label36.AutoSize = true;
+            label36.Location = new System.Drawing.Point(268, 12);
+            label36.Name = "label36";
+            label36.Size = new System.Drawing.Size(60, 15);
+            label36.TabIndex = 0;
+            label36.Text = "Google AI";
+            // 
+            // GoogleAPIKeyLabel
+            // 
+            GoogleAPIKeyLabel.AutoSize = true;
+            GoogleAPIKeyLabel.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleAPIKeyLabel.Location = new System.Drawing.Point(37, 51);
+            GoogleAPIKeyLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            GoogleAPIKeyLabel.Name = "GoogleAPIKeyLabel";
+            GoogleAPIKeyLabel.Size = new System.Drawing.Size(47, 15);
+            GoogleAPIKeyLabel.TabIndex = 27;
+            GoogleAPIKeyLabel.Text = "API Key";
+            // 
+            // GoogleAPIKeyTextBox
+            // 
+            GoogleAPIKeyTextBox.Location = new System.Drawing.Point(183, 47);
+            GoogleAPIKeyTextBox.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            GoogleAPIKeyTextBox.Name = "GoogleAPIKeyTextBox";
+            GoogleAPIKeyTextBox.PasswordChar = '*';
+            GoogleAPIKeyTextBox.Size = new System.Drawing.Size(224, 23);
+            GoogleAPIKeyTextBox.TabIndex = 28;
+            // 
+            // GoogleTestButton
+            // 
+            GoogleTestButton.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleTestButton.Location = new System.Drawing.Point(437, 47);
+            GoogleTestButton.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            GoogleTestButton.Name = "GoogleTestButton";
+            GoogleTestButton.Size = new System.Drawing.Size(88, 27);
+            GoogleTestButton.TabIndex = 29;
+            GoogleTestButton.Text = "Test";
+            GoogleTestButton.UseVisualStyleBackColor = true;
+            GoogleTestButton.Click += GoogleTestButton_Click;
+            // 
+            // GoogleModelLabel
+            // 
+            GoogleModelLabel.AutoSize = true;
+            GoogleModelLabel.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleModelLabel.Location = new System.Drawing.Point(37, 82);
+            GoogleModelLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            GoogleModelLabel.Name = "GoogleModelLabel";
+            GoogleModelLabel.Size = new System.Drawing.Size(81, 15);
+            GoogleModelLabel.TabIndex = 31;
+            GoogleModelLabel.Text = "Google Model";
+            // 
+            // GoogleModelComboBox
+            // 
+            GoogleModelComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            GoogleModelComboBox.FormattingEnabled = true;
+            GoogleModelComboBox.Items.AddRange(new object[] { "gemini-2.5-flash", "gemini-2.5-pro", "gemini-1.5-flash" });
+            GoogleModelComboBox.Location = new System.Drawing.Point(183, 82);
+            GoogleModelComboBox.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            GoogleModelComboBox.Name = "GoogleModelComboBox";
+            GoogleModelComboBox.Size = new System.Drawing.Size(224, 23);
+            GoogleModelComboBox.TabIndex = 32;
+            GoogleModelComboBox.SelectedIndexChanged += GoogleModelComboBox_SelectedIndexChanged;
+            // 
+            // GoogleLoadModelsButton
+            // 
+            GoogleLoadModelsButton.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleLoadModelsButton.Location = new System.Drawing.Point(437, 80);
+            GoogleLoadModelsButton.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            GoogleLoadModelsButton.Name = "GoogleLoadModelsButton";
+            GoogleLoadModelsButton.Size = new System.Drawing.Size(88, 27);
+            GoogleLoadModelsButton.TabIndex = 40;
+            GoogleLoadModelsButton.Text = "Load models";
+            GoogleLoadModelsButton.UseVisualStyleBackColor = true;
+            GoogleLoadModelsButton.Click += GoogleLoadModelsButton_Click;
+            BBBToolTip.SetToolTip(GoogleLoadModelsButton, "Pulls the model list for your Google AI key into the selector.");
+            // 
+            // GoogleTemperatureLabel
+            // 
+            GoogleTemperatureLabel.AutoSize = true;
+            GoogleTemperatureLabel.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleTemperatureLabel.Location = new System.Drawing.Point(183, 118);
+            GoogleTemperatureLabel.Name = "GoogleTemperatureLabel";
+            GoogleTemperatureLabel.Size = new System.Drawing.Size(73, 15);
+            GoogleTemperatureLabel.TabIndex = 35;
+            GoogleTemperatureLabel.Text = "Temperature";
+            // 
+            // GoogleTemperatureTextBox
+            // 
+            GoogleTemperatureTextBox.Location = new System.Drawing.Point(183, 136);
+            GoogleTemperatureTextBox.Name = "GoogleTemperatureTextBox";
+            GoogleTemperatureTextBox.Size = new System.Drawing.Size(100, 23);
+            GoogleTemperatureTextBox.TabIndex = 33;
+            GoogleTemperatureTextBox.Text = "0.7";
+            BBBToolTip.SetToolTip(GoogleTemperatureTextBox, "Default: 0.7. Maximum 2");
+            GoogleTemperatureTextBox.KeyPress += GPTTemperatureTextBox_KeyPress;
+            GoogleTemperatureTextBox.Validating += GPTTemperatureTextBox_Validating;
+            // 
+            // GoogleMaxTokensLabel
+            // 
+            GoogleMaxTokensLabel.AutoSize = true;
+            GoogleMaxTokensLabel.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleMaxTokensLabel.Location = new System.Drawing.Point(307, 116);
+            GoogleMaxTokensLabel.Name = "GoogleMaxTokensLabel";
+            GoogleMaxTokensLabel.Size = new System.Drawing.Size(68, 15);
+            GoogleMaxTokensLabel.TabIndex = 36;
+            GoogleMaxTokensLabel.Text = "Max tokens";
+            // 
+            // GoogleMaxTokensTextBox
+            // 
+            GoogleMaxTokensTextBox.Location = new System.Drawing.Point(307, 136);
+            GoogleMaxTokensTextBox.Name = "GoogleMaxTokensTextBox";
+            GoogleMaxTokensTextBox.Size = new System.Drawing.Size(100, 23);
+            GoogleMaxTokensTextBox.TabIndex = 34;
+            GoogleMaxTokensTextBox.Text = "150";
+            GoogleMaxTokensTextBox.KeyPress += GPTMaxTokensTextBox_KeyPress;
+            GoogleMaxTokensTextBox.Validating += GPTMaxTokensTextBox_Validating;
+            // 
+            // GoogleReasoningLabel
+            // 
+            GoogleReasoningLabel.AutoSize = true;
+            GoogleReasoningLabel.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleReasoningLabel.Location = new System.Drawing.Point(37, 173);
+            GoogleReasoningLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            GoogleReasoningLabel.Name = "GoogleReasoningLabel";
+            GoogleReasoningLabel.Size = new System.Drawing.Size(96, 15);
+            GoogleReasoningLabel.TabIndex = 41;
+            GoogleReasoningLabel.Text = "Reasoning effort";
+            // 
+            // GoogleReasoningComboBox
+            // 
+            GoogleReasoningComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            GoogleReasoningComboBox.FormattingEnabled = true;
+            GoogleReasoningComboBox.Items.AddRange(new object[] { "Auto (model default)", "Minimal", "Low", "Medium", "High" });
+            GoogleReasoningComboBox.Location = new System.Drawing.Point(183, 170);
+            GoogleReasoningComboBox.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            GoogleReasoningComboBox.Name = "GoogleReasoningComboBox";
+            GoogleReasoningComboBox.Size = new System.Drawing.Size(224, 23);
+            GoogleReasoningComboBox.TabIndex = 42;
+            BBBToolTip.SetToolTip(GoogleReasoningComboBox, "Controls reasoning/thinking effort for Gemini models. Lower effort means faster, shorter answers.");
+            // 
+            // GoogleReasoningLoadButton
+            // 
+            GoogleReasoningLoadButton.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleReasoningLoadButton.Location = new System.Drawing.Point(437, 168);
+            GoogleReasoningLoadButton.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            GoogleReasoningLoadButton.Name = "GoogleReasoningLoadButton";
+            GoogleReasoningLoadButton.Size = new System.Drawing.Size(88, 27);
+            GoogleReasoningLoadButton.TabIndex = 43;
+            GoogleReasoningLoadButton.Text = "Load levels";
+            GoogleReasoningLoadButton.UseVisualStyleBackColor = true;
+            GoogleReasoningLoadButton.Click += GoogleReasoningLoadButton_Click;
+            BBBToolTip.SetToolTip(GoogleReasoningLoadButton, "Fills the reasoning effort list with the levels supported by the selected Google model.");
+            // 
+            // GoogleVoiceModelLabel
+            // 
+            GoogleVoiceModelLabel.AutoSize = true;
+            GoogleVoiceModelLabel.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleVoiceModelLabel.Location = new System.Drawing.Point(37, 211);
+            GoogleVoiceModelLabel.Margin = new System.Windows.Forms.Padding(4, 0, 4, 0);
+            GoogleVoiceModelLabel.Name = "GoogleVoiceModelLabel";
+            GoogleVoiceModelLabel.Size = new System.Drawing.Size(73, 15);
+            GoogleVoiceModelLabel.TabIndex = 45;
+            GoogleVoiceModelLabel.Text = "Voice Model";
+            // 
+            // GoogleVoiceModelComboBox
+            // 
+            GoogleVoiceModelComboBox.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            GoogleVoiceModelComboBox.FormattingEnabled = true;
+            GoogleVoiceModelComboBox.Items.AddRange(new object[] { "gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts", "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts" });
+            GoogleVoiceModelComboBox.Location = new System.Drawing.Point(183, 208);
+            GoogleVoiceModelComboBox.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            GoogleVoiceModelComboBox.Name = "GoogleVoiceModelComboBox";
+            GoogleVoiceModelComboBox.Size = new System.Drawing.Size(224, 23);
+            GoogleVoiceModelComboBox.TabIndex = 46;
+            BBBToolTip.SetToolTip(GoogleVoiceModelComboBox, "Selects the Gemini model used for text-to-speech audio generation.");
+            // 
+            // GoogleLoadVoiceModelsButton
+            // 
+            GoogleLoadVoiceModelsButton.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleLoadVoiceModelsButton.Location = new System.Drawing.Point(437, 206);
+            GoogleLoadVoiceModelsButton.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            GoogleLoadVoiceModelsButton.Name = "GoogleLoadVoiceModelsButton";
+            GoogleLoadVoiceModelsButton.Size = new System.Drawing.Size(120, 27);
+            GoogleLoadVoiceModelsButton.TabIndex = 47;
+            GoogleLoadVoiceModelsButton.Text = "Load voice models";
+            GoogleLoadVoiceModelsButton.UseVisualStyleBackColor = true;
+            GoogleLoadVoiceModelsButton.Click += GoogleLoadVoiceModelsButton_Click;
+            BBBToolTip.SetToolTip(GoogleLoadVoiceModelsButton, "Pulls the TTS model list for your Google AI key into the selector.");
+            // 
+            // GoogleTestSettingsButton
+            // 
+            GoogleTestSettingsButton.ImeMode = System.Windows.Forms.ImeMode.NoControl;
+            GoogleTestSettingsButton.Location = new System.Drawing.Point(437, 112);
+            GoogleTestSettingsButton.Margin = new System.Windows.Forms.Padding(4, 3, 4, 3);
+            GoogleTestSettingsButton.Name = "GoogleTestSettingsButton";
+            GoogleTestSettingsButton.Size = new System.Drawing.Size(100, 27);
+            GoogleTestSettingsButton.TabIndex = 44;
+            GoogleTestSettingsButton.Text = "Test Settings";
+            GoogleTestSettingsButton.UseVisualStyleBackColor = true;
+            GoogleTestSettingsButton.Click += GoogleTestSettingsButton_Click;
+            BBBToolTip.SetToolTip(GoogleTestSettingsButton, "Sends one small chat request with the values in this panel so Google confirms the key, model, temperature, max tokens and reasoning effort all work together.");
+            // 
             // SettingsForm
             // 
             AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
@@ -2009,6 +2263,8 @@
             OllamaPanel.PerformLayout();
             GroqPanel.ResumeLayout(false);
             GroqPanel.PerformLayout();
+            GooglePanel.ResumeLayout(false);
+            GooglePanel.PerformLayout();
             ResumeLayout(false);
         }
 
@@ -2116,6 +2372,25 @@
         private System.Windows.Forms.ComboBox GroqReasoningComboBox;
         private System.Windows.Forms.Button GroqReasoningLoadButton;
         private System.Windows.Forms.Button GroqTestSettingsButton;
+        private System.Windows.Forms.Panel GooglePanel;
+        private System.Windows.Forms.Label label36;
+        private System.Windows.Forms.Label GoogleAPIKeyLabel;
+        private System.Windows.Forms.TextBox GoogleAPIKeyTextBox;
+        private System.Windows.Forms.Button GoogleTestButton;
+        private System.Windows.Forms.Label GoogleModelLabel;
+        private System.Windows.Forms.ComboBox GoogleModelComboBox;
+        private System.Windows.Forms.Button GoogleLoadModelsButton;
+        private System.Windows.Forms.Label GoogleTemperatureLabel;
+        private System.Windows.Forms.TextBox GoogleTemperatureTextBox;
+        private System.Windows.Forms.Label GoogleMaxTokensLabel;
+        private System.Windows.Forms.TextBox GoogleMaxTokensTextBox;
+        private System.Windows.Forms.Label GoogleReasoningLabel;
+        private System.Windows.Forms.ComboBox GoogleReasoningComboBox;
+        private System.Windows.Forms.Button GoogleReasoningLoadButton;
+        private System.Windows.Forms.Label GoogleVoiceModelLabel;
+        private System.Windows.Forms.ComboBox GoogleVoiceModelComboBox;
+        private System.Windows.Forms.Button GoogleLoadVoiceModelsButton;
+        private System.Windows.Forms.Button GoogleTestSettingsButton;
         private System.Windows.Forms.Panel NativeSpeechPanel;
         private System.Windows.Forms.Label label22;
         private System.Windows.Forms.ComboBox NativeSpeechRecognitionLanguageComboBox;

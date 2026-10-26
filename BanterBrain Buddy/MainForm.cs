@@ -1,4 +1,4 @@
-﻿using Gma.System.MouseKeyHook;
+using Gma.System.MouseKeyHook;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -35,7 +35,7 @@ namespace BanterBrain_Buddy
 {
     public partial class BBB : Form
     {
-        private readonly static string Version = "1.0.11";
+        private readonly static string Version = "1.0.12";
 
         //set logger
         private static log4net.ILog _bBBlog;
@@ -86,6 +86,7 @@ namespace BanterBrain_Buddy
         private OllamaLLM _ollamaLLM;
         private OpenAI _openAI;
         private Groq _groqLLM;
+        private GoogleAI _googleLLM;
         private readonly List<Personas> _personas = [];
         private TwitchLLMResponseLanguage TwitchLLMLanguage = new();
 
@@ -483,6 +484,29 @@ namespace BanterBrain_Buddy
                 catch (Exception ex)
                 {
                     _bBBlog.Error("Error checking Groq API key: " + ex.Message);
+                }
+            }
+            //check Google AI
+            if (!string.IsNullOrEmpty(UserSettingsManager.Settings.GoogleAPIKey))
+            {
+                try
+                {
+                    _googleLLM ??= new();
+                    if (await _googleLLM.GoogleAICheckAPIKey())
+                    {
+                        LLMResponseSelecter.Items.Add("Google AI");
+                        _bBBlog.Info("Google AI API setting valid, adding to list");
+                        UpdateTextLog("Google AI API setting valid.\r\n");
+                    }
+                    else
+                    {
+                        _bBBlog.Error("Google AI API setting invalid");
+                    }
+
+                }
+                catch (Exception ex)
+                {
+                    _bBBlog.Error("Error checking Google AI API key: " + ex.Message);
                 }
             }
         }
@@ -1214,6 +1238,37 @@ namespace BanterBrain_Buddy
             }
         }
 
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async Task TalkToGoogleAI(String UserInput, string tmpPersonaRoletext)
+        {
+            _gPTOutputText = "";
+            UpdateTextLog("Sending to Google AI: " + UserInput + "\r\n");
+            _bBBlog.Info("Sending to Google AI: " + UserInput);
+            _gPTDone = false;
+
+            _googleLLM ??= new();
+            var result = await _googleLLM.GetGoogleAIResponse(UserInput, tmpPersonaRoletext);
+            if (result == null)
+            {
+                string reason = _googleLLM.LastResponseError;
+                if (string.IsNullOrEmpty(reason))
+                {
+                    reason = "Google AI returned no answer. Check the Max Tokens setting or the reasoning effort in Settings.";
+                }
+                _bBBlog.Error("Google AI chat failed: " + reason);
+                UpdateTextLog("Google AI returned no answer: " + reason + "\r\n");
+                MessageBox.Show(reason, "Google AI API error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _bigError = true;
+                _gPTDone = true;
+            }
+            else
+            {
+                UpdateTextLog("Google AI Response: " + result + "\r\n");
+                _gPTOutputText = result;
+                _gPTDone = true;
+            }
+        }
+
         /// <summary>
         /// Holds the list of Azure Voices and their options
         /// </summary>
@@ -1326,6 +1381,10 @@ namespace BanterBrain_Buddy
             {
                 await TTSElevenLabsSpeakToOutput(TextToSay, tmpPersona);
             }
+            else if (tmpPersona.VoiceProvider == "Google AI" || tmpPersona.VoiceProvider == "Google Gemini")
+            {
+                await TTSGoogleAISpeakToOutput(TextToSay, tmpPersona);
+            }
 
             await Task.Delay(DelayWhenDone);
             _tTSSpeaking = false;
@@ -1409,6 +1468,47 @@ namespace BanterBrain_Buddy
             MainRecordingStart.Enabled = true;
         }
 
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async Task TTSGoogleAISpeakToOutput(string TextToSpeak, Personas tmpPersona)
+        {
+            if (UserSettingsManager.Settings.GoogleAPIKey.Length < 1)
+            {
+                _bBBlog.Error("Google AI TTS error. No API key found but this persona uses it. Please check your settings");
+                UpdateTextLog("Google AI TTS error. No API key found but this persona uses it. Please check your settings\r\n");
+                MainRecordingStart.Enabled = true;
+                return;
+            }
+            UpdateTextLog("Saying text with Google AI TTS\r\n");
+            _bBBlog.Info("Saying text with Google AI TTS");
+            _googleLLM ??= new();
+            if (!await _googleLLM.GoogleAICheckAPIKey())
+            {
+                _bBBlog.Error("Google AI TTS error. Is there a problem with your API key?");
+                MessageBox.Show("Google AI TTS error. Is there a problem with your API key?", "Google AI TTS error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MainRecordingStart.Enabled = true;
+                return;
+            }
+
+            string voiceModel = null;
+            if (tmpPersona.VoiceOptions != null && tmpPersona.VoiceOptions.Count > 0 && !tmpPersona.VoiceOptions[0].StartsWith("Default", StringComparison.OrdinalIgnoreCase))
+            {
+                voiceModel = tmpPersona.VoiceOptions[0];
+            }
+            var result = await _googleLLM.GoogleAITTS(TextToSpeak, UserSettingsManager.Settings.TTSAudioOutput, tmpPersona.VoiceName, tmpPersona.Rate, tmpPersona.Volume, voiceModel);
+            if (!result)
+            {
+                string err = !string.IsNullOrEmpty(_googleLLM.LastResponseError) ? _googleLLM.LastResponseError : "Playback or generation failed";
+                _bBBlog.Error("Google AI TTS error: " + err);
+                UpdateTextLog("Google AI TTS error: " + err + "\r\n");
+            }
+            else
+            {
+                _bBBlog.Info("Google AI TTS done");
+                UpdateTextLog("Google AI TTS done\r\n");
+            }
+            MainRecordingStart.Enabled = true;
+        }
+
         //talk to the various LLM's
         [SupportedOSPlatform("windows10.0.10240")]
         private async Task TalkToLLM(string TextToPass, string tmpPersonaRoleText)
@@ -1432,6 +1532,12 @@ namespace BanterBrain_Buddy
                 UpdateTextLog("Using Groq\r\n");
                 _bBBlog.Info("Using Groq");
                 await TalkToGroq(TextToPass, tmpPersonaRoleText);
+            }
+            else if (UserSettingsManager.Settings.SelectedLLM == "Google AI" || UserSettingsManager.Settings.SelectedLLM == "Google Gemini" || UserSettingsManager.Settings.SelectedLLM == "Google")
+            {
+                UpdateTextLog("Using Google AI\r\n");
+                _bBBlog.Info("Using Google AI");
+                await TalkToGoogleAI(TextToPass, tmpPersonaRoleText);
             }
             else
             {
@@ -1954,6 +2060,34 @@ namespace BanterBrain_Buddy
                     MessageBox.Show("OpenAI ChatGPT is selected as LLM but key is invalid. \r\n", "OpenAI ChatGPT error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
 
+            }
+            else if (UserSettingsManager.Settings.SelectedLLM == "Groq")
+            {
+                if (await Groq.ValidateApiKeyAsync(UserSettingsManager.Settings.GroqAPIKey))
+                {
+                    _bBBlog.Info("Groq API key is valid");
+                    UpdateTextLog("Groq key is valid.\r\n");
+                }
+                else
+                {
+                    _bBBlog.Error("Groq is selected but key is invalid.\r\n");
+                    UpdateTextLog("Groq is selected as LLM but key is invalid.\r\n");
+                    MessageBox.Show("Groq is selected as LLM but key is invalid.\r\n", "Groq error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+            else if (UserSettingsManager.Settings.SelectedLLM == "Google AI" || UserSettingsManager.Settings.SelectedLLM == "Google Gemini" || UserSettingsManager.Settings.SelectedLLM == "Google")
+            {
+                if (await GoogleAI.ValidateApiKeyAsync(UserSettingsManager.Settings.GoogleAPIKey))
+                {
+                    _bBBlog.Info("Google AI API key is valid");
+                    UpdateTextLog("Google AI key is valid.\r\n");
+                }
+                else
+                {
+                    _bBBlog.Error("Google AI is selected but key is invalid.\r\n");
+                    UpdateTextLog("Google AI is selected as LLM but key is invalid.\r\n");
+                    MessageBox.Show("Google AI is selected as LLM but key is invalid.\r\n", "Google AI error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
             else if (UserSettingsManager.Settings.SelectedLLM == "None" || UserSettingsManager.Settings.SelectedLLM == "")
             {
@@ -2977,6 +3111,10 @@ namespace BanterBrain_Buddy
                 _elevenLabsApi.ElevelLabsAPIKey = UserSettingsManager.Settings.ElevenLabsAPIkey;
             if (_openAI != null)
                 _openAI.OpenAIAPIKey = UserSettingsManager.Settings.GPTAPIKey;
+            if (_groqLLM != null)
+                _groqLLM.GroqAPIKey = UserSettingsManager.Settings.GroqAPIKey;
+            if (_googleLLM != null)
+                _googleLLM.GoogleAPIKey = UserSettingsManager.Settings.GoogleAPIKey;
             STTSelectedComboBox.Items.Clear();
             await LoadPersonas();
             LoadTwitchLLMLanguageFile();
@@ -3619,6 +3757,7 @@ namespace BanterBrain_Buddy
             _ollamaLLM?.OllamaChatReset();
             _openAI?.ChatGPTChatReset();
             _groqLLM?.GroqChatReset();
+            _googleLLM?.GoogleAIChatReset();
         }
 
         [SupportedOSPlatform("windows10.0.10240")]

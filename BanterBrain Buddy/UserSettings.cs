@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -89,6 +89,20 @@ namespace BanterBrain_Buddy
         public List<string> GroqModelListCache { get; set; }
         //reasoning effort levels per Groq model, an empty list caches "no reasoning settings"
         public Dictionary<string, List<string>> GroqReasoningLevelsCache { get; set; }
+        //Google AI (Gemini OpenAI compatible chat API)
+        public string GoogleAPIKey { get; set; }
+        public string GoogleModel { get; set; }
+        public string GoogleVoiceModel { get; set; }
+        public float GoogleTemperature { get; set; }
+        public int GoogleMaxTokens { get; set; }
+        //reasoning effort for Google reasoning models, empty means the model default
+        public string GoogleReasoningEffortComboBox { get; set; }
+        //last model list fetched from Google, fills the settings selector across restarts
+        public List<string> GoogleModelListCache { get; set; }
+        //last voice model list fetched from Google
+        public List<string> GoogleVoiceModelListCache { get; set; }
+        //reasoning effort levels per Google model, an empty list caches "no reasoning settings"
+        public Dictionary<string, List<string>> GoogleReasoningLevelsCache { get; set; }
         public string TwitchChatSound { get; set; }
         public bool TwitchChatSoundCheckBox { get; set; }
         public bool TwitchChannelSoundCheckBox { get; set; }
@@ -259,6 +273,16 @@ namespace BanterBrain_Buddy
                 settings.GroqReasoningEffortComboBox = "";
                 settings.GroqModelListCache = new List<string>();
                 settings.GroqReasoningLevelsCache = new Dictionary<string, List<string>>();
+
+                //Google AI / Gemini
+                settings.GoogleModel = "gemini-2.5-flash";
+                settings.GoogleVoiceModel = "gemini-3.8-flash-tts";
+                settings.GoogleTemperature = 0.7f;
+                settings.GoogleMaxTokens = 150;
+                settings.GoogleReasoningEffortComboBox = "";
+                settings.GoogleModelListCache = new List<string>();
+                settings.GoogleVoiceModelListCache = new List<string>();
+                settings.GoogleReasoningLevelsCache = new Dictionary<string, List<string>>();
 
                 //Webserversource
                 settings.WebsourceServer = "http://localhost:9138";

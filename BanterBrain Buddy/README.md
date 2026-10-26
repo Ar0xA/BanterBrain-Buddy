@@ -1,7 +1,7 @@
 ### v1.0.0 release of BanterBrain Buddy.
 Download: https://github.com/WhiskerWeirdo/BanterBrain-Buddy/releases/tag/0.1.4-beta
 
-**This application requires a valid OpenAI ChatGPT API key to operate _or_ a local Ollama installation.** 
+**This application requires a valid API key (OpenAI ChatGPT, Groq, Google AI Gemini) to operate _or_ a local Ollama installation.** 
 
 Please report all bugs to the discord or here on github. 
 

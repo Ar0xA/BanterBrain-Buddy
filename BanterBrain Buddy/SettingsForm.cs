@@ -1,4 +1,4 @@
-﻿using NAudio.CoreAudioApi;
+using NAudio.CoreAudioApi;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -206,6 +206,9 @@ namespace BanterBrain_Buddy
                     break;
                 case "GroqLLM":
                     PanelVisible(GroqPanel.Name);
+                    break;
+                case "GoogleLLM":
+                    PanelVisible(GooglePanel.Name);
                     break;
                 case "StreamingSettings":
                     PanelVisible(TwitchPanel.Name);
@@ -415,6 +418,53 @@ namespace BanterBrain_Buddy
             {
                 GroqReasoningComboBox.SelectedIndex = 0;
             }
+            //Google AI: older settings files have no values for these, stay null-safe and fall back to defaults
+            GoogleAPIKeyTextBox.Text = UserSettingsManager.Settings.GoogleAPIKey ?? "";
+            //restore the model list from the last fetch, so the selector stays filled across restarts
+            if (UserSettingsManager.Settings.GoogleModelListCache != null && UserSettingsManager.Settings.GoogleModelListCache.Count > 0)
+            {
+                GoogleModelComboBox.Items.Clear();
+                foreach (string cachedModel in UserSettingsManager.Settings.GoogleModelListCache)
+                {
+                    GoogleModelComboBox.Items.Add(cachedModel);
+                }
+            }
+            if (string.IsNullOrEmpty(UserSettingsManager.Settings.GoogleModel))
+            {
+                _bBBlog.Info("No Google model set, using the built-in defaults");
+                GoogleModelComboBox.SelectedIndex = 0;
+                GoogleTemperatureTextBox.Text = "0.7";
+                GoogleMaxTokensTextBox.Text = "150";
+            }
+            else
+            {
+                GoogleModelComboBox.SelectedIndex = GoogleModelComboBox.FindStringExact(UserSettingsManager.Settings.GoogleModel);
+                if (GoogleModelComboBox.SelectedIndex < 0)
+                    GoogleModelComboBox.SelectedIndex = 0;
+                GoogleTemperatureTextBox.Text = UserSettingsManager.Settings.GoogleTemperature.ToString();
+                GoogleMaxTokensTextBox.Text = UserSettingsManager.Settings.GoogleMaxTokens.ToString();
+            }
+            ApplyCachedGoogleReasoningLevels(GoogleModelComboBox.Text);
+            string savedGoogleEffort = UserSettingsManager.Settings.GoogleReasoningEffortComboBox ?? "";
+            if (savedGoogleEffort.Equals("None", StringComparison.OrdinalIgnoreCase))
+            {
+                savedGoogleEffort = "Auto (model default)";
+            }
+            GoogleReasoningComboBox.SelectedIndex = GoogleReasoningComboBox.FindStringExact(savedGoogleEffort);
+            if (GoogleReasoningComboBox.SelectedIndex < 0)
+            {
+                GoogleReasoningComboBox.SelectedIndex = 0;
+            }
+            if (UserSettingsManager.Settings.GoogleVoiceModelListCache != null && UserSettingsManager.Settings.GoogleVoiceModelListCache.Count > 0)
+            {
+                GoogleVoiceModelComboBox.Items.Clear();
+                foreach (string vm in UserSettingsManager.Settings.GoogleVoiceModelListCache)
+                {
+                    GoogleVoiceModelComboBox.Items.Add(vm);
+                }
+            }
+            int googleVoiceIndex = GoogleVoiceModelComboBox.FindStringExact(UserSettingsManager.Settings.GoogleVoiceModel ?? "");
+            GoogleVoiceModelComboBox.SelectedIndex = googleVoiceIndex >= 0 ? googleVoiceIndex : 0;
             ElevenlabsAPIKeyTextBox.Text = UserSettingsManager.Settings.ElevenLabsAPIkey;
             ElevenLabsModelComboBox.SelectedIndex = ElevenLabsModelComboBox.FindStringExact(UserSettingsManager.Settings.ElevenLabsModel);
             if (ElevenLabsModelComboBox.SelectedIndex == -1)
@@ -548,6 +598,17 @@ namespace BanterBrain_Buddy
                 UserSettingsManager.Settings.GroqMaxTokens = ParseIntOrDefault(GroqMaxTokensTextBox.Text, UserSettingsManager.Settings.GroqMaxTokens);
             if (GroqTemperatureTextBox.Text.Length > 0)
                 UserSettingsManager.Settings.GroqTemperature = ParseFloatOrDefault(GroqTemperatureTextBox.Text, UserSettingsManager.Settings.GroqTemperature);
+            if (GoogleModelComboBox.Text.Length > 0)
+                UserSettingsManager.Settings.GoogleModel = GoogleModelComboBox.Text;
+            if (GoogleAPIKeyTextBox.Text.Length > 0)
+                UserSettingsManager.Settings.GoogleAPIKey = GoogleAPIKeyTextBox.Text;
+            if (GoogleMaxTokensTextBox.Text.Length > 0)
+                UserSettingsManager.Settings.GoogleMaxTokens = ParseIntOrDefault(GoogleMaxTokensTextBox.Text, UserSettingsManager.Settings.GoogleMaxTokens);
+            if (GoogleTemperatureTextBox.Text.Length > 0)
+                UserSettingsManager.Settings.GoogleTemperature = ParseFloatOrDefault(GoogleTemperatureTextBox.Text, UserSettingsManager.Settings.GoogleTemperature);
+            UserSettingsManager.Settings.GoogleReasoningEffortComboBox = GoogleReasoningComboBox.SelectedIndex > 0 ? GoogleReasoningComboBox.Text : "";
+            if (!string.IsNullOrEmpty(GoogleVoiceModelComboBox.Text))
+                UserSettingsManager.Settings.GoogleVoiceModel = GoogleVoiceModelComboBox.Text;
             if (NativeSpeechRecognitionLanguageComboBox.Text.Length > 1)
                 UserSettingsManager.Settings.NativeSpeechRecognitionLanguageComboBox = NativeSpeechRecognitionLanguageComboBox.Text;
             if (WhisperSpeechRecognitionComboBox.Text.Length > 1)
@@ -594,6 +655,8 @@ namespace BanterBrain_Buddy
                     TTSProviderComboBox.Items.Add("OpenAI Whisper");
                 if (ElevenlabsAPIKeyTextBox.Text.Length > 0)
                     TTSProviderComboBox.Items.Add("ElevenLabs");
+                if (GoogleAPIKeyTextBox.Text.Length > 0)
+                    TTSProviderComboBox.Items.Add("Google AI");
                 TTSProviderComboBox.SelectedIndex = 0;
 
                 _bBBlog.Debug("Personas panel visible. we need to load the persona's and enable the eventhandlers");
@@ -741,6 +804,45 @@ namespace BanterBrain_Buddy
                 PitchTrackBar.Enabled = false;
                 RateTrackBar.Value = 0;
                 RateTrackBar.Enabled = true;
+                TTSOutputVoice.Text = TTSOutputVoice.Items[0].ToString();
+                PitchTrackBar.Scroll -= PitchTrackBar_ScrollSnapToTen;
+                return true;
+            }
+            else if (TTSProviderComboBox.Text == "Google AI" || TTSProviderComboBox.Text == "Google Gemini")
+            {
+                TTSOutputVoice.Text = "";
+                TTSOption1Label.Text = "Voice Model";
+                TTSOption1Label.Visible = true;
+                TTSOutputVoiceOption1.Visible = true;
+                TTSOutputVoiceOption1.DropDownStyle = ComboBoxStyle.DropDownList;
+                TTSOutputVoiceOption1.Items.Clear();
+                TTSOutputVoiceOption1.Items.Add("Default (Settings)");
+                List<string> voiceModels = UserSettingsManager.Settings.GoogleVoiceModelListCache;
+                if (voiceModels == null || voiceModels.Count == 0)
+                {
+                    voiceModels = new List<string>(GoogleAI.DefaultVoiceModels);
+                }
+                foreach (string vm in voiceModels)
+                {
+                    TTSOutputVoiceOption1.Items.Add(vm);
+                }
+                TTSOutputVoiceOption1.SelectedIndex = 0;
+
+                TTSOutputVoiceOption2.Visible = false;
+                TTSOption2Label.Visible = false;
+                TTSOutputVoiceOption3.Visible = false;
+                TTSOption3Label.Visible = false;
+                TTSOutputVoice.Items.Clear();
+                TTSOutputVoice.Items.Add("Puck");
+                TTSOutputVoice.Items.Add("Charon");
+                TTSOutputVoice.Items.Add("Kore");
+                TTSOutputVoice.Items.Add("Fenrir");
+                TTSOutputVoice.Items.Add("Aoede");
+                TTSOutputVoice.Items.Add("Zephyr");
+                TTSOutputVoice.Sorted = true;
+                PitchTrackBar.Enabled = false;
+                RateTrackBar.Value = 0;
+                RateTrackBar.Enabled = false;
                 TTSOutputVoice.Text = TTSOutputVoice.Items[0].ToString();
                 PitchTrackBar.Scroll -= PitchTrackBar_ScrollSnapToTen;
                 return true;
@@ -1232,6 +1334,28 @@ namespace BanterBrain_Buddy
             else if (TTSProviderComboBox.Text == "ElevenLabs")
             {
                 await TTSElevenLabsSpeakToOutput(TextToSay);
+            }
+            else if (TTSProviderComboBox.Text == "Google AI" || TTSProviderComboBox.Text == "Google Gemini")
+            {
+                await TTSGoogleAISpeakToOutput(TextToSay);
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async Task TTSGoogleAISpeakToOutput(string TextToSay)
+        {
+            string voiceModel = null;
+            if (TTSOutputVoiceOption1.Visible && TTSOutputVoiceOption1.SelectedIndex > 0)
+            {
+                voiceModel = TTSOutputVoiceOption1.Text;
+            }
+            GoogleAI googleAI = new();
+            var result = await googleAI.GoogleAITTS(TextToSay, TTSAudioOutputComboBox.Text, TTSOutputVoice.Text, ParseIntOrDefault(TTSSpeedLevel.Text, 0), ParseIntOrDefault(TTSVoiceLevel.Text, 0), voiceModel);
+            if (!result)
+            {
+                string errorDetail = !string.IsNullOrEmpty(googleAI.LastResponseError) ? googleAI.LastResponseError : "Is there a problem with your API key or connection?";
+                _bBBlog.Error("Google AI TTS error: " + errorDetail);
+                MessageBox.Show("Google AI TTS error: " + errorDetail, "Google AI TTS error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -1746,6 +1870,11 @@ namespace BanterBrain_Buddy
                     TTSOutputVoiceOption1.Text = elevenOption1;
                     TTSOutputVoiceOption2.Text = elevenOption2;
                     TTSOutputVoiceOption3.Text = elevenOption3;
+                }
+                if (TTSProviderComboBox.Text == "Google AI" || TTSProviderComboBox.Text == "Google Gemini")
+                {
+                    int optIndex = TTSOutputVoiceOption1.FindStringExact(selectedPersona.VoiceOptions[0]);
+                    TTSOutputVoiceOption1.SelectedIndex = optIndex >= 0 ? optIndex : 0;
                 }
             }
             if (PersonaComboBox.Text == "Default")
@@ -2791,6 +2920,321 @@ namespace BanterBrain_Buddy
             {
                 _bBBlog.Error("Groq settings test failed: " + result.error);
                 MessageBox.Show("Groq rejected these settings:\r\n\r\n" + result.error, "Groq settings test", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        //checks the entered Google AI key with a free model listing call and saves it when valid
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GooglePanel_Validating(object sender, CancelEventArgs e)
+        {
+            if (GooglePanel.Visible)
+            {
+                if (GoogleAPIKeyTextBox.Text.Length > 1)
+                {
+                    if (!await GoogleAI.ValidateApiKeyAsync(GoogleAPIKeyTextBox.Text))
+                    {
+                        MessageBox.Show("Invalid Google AI API key. Value cleared", "Google AI API key error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        GoogleAPIKeyTextBox.Text = "";
+                        e.Cancel = true;
+                    }
+                    else
+                    {
+                        UserSettingsManager.Settings.GoogleAPIKey = GoogleAPIKeyTextBox.Text;
+                        UserSettingsManager.SaveSettings();
+                    }
+                }
+                else
+                {
+                    UserSettingsManager.Settings.GoogleAPIKey = "";
+                    UserSettingsManager.SaveSettings();
+                }
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GoogleTestButton_Click(object sender, EventArgs e)
+        {
+            if (await GoogleAI.ValidateApiKeyAsync(GoogleAPIKeyTextBox.Text))
+            {
+                _bBBlog.Info("Google AI API key is valid");
+                MessageBox.Show("Google AI API key is valid", "Google AI API Test", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                _bBBlog.Error("Google AI API key is invalid");
+                MessageBox.Show("Google AI API key is invalid", "Google AI API Test", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        //pulls the model list for the entered (or saved) key into the Google model selector
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GoogleLoadModelsButton_Click(object sender, EventArgs e)
+        {
+            string apiKey = GoogleAPIKeyTextBox.Text;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                apiKey = UserSettingsManager.Settings.GoogleAPIKey;
+            }
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                _bBBlog.Info("Google model list load requested without an API key");
+                MessageBox.Show("Enter a Google AI API key first", "Google models", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            GoogleLoadModelsButton.Enabled = false;
+            bool loaded = await RefreshGoogleModelsFromAPIAsync(apiKey);
+            GoogleLoadModelsButton.Enabled = true;
+            if (!loaded)
+            {
+                MessageBox.Show("Could not load the model list. Check the API key or your internet connection.", "Google models", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        //fills the Google model selector from Google's model listing
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async Task<bool> RefreshGoogleModelsFromAPIAsync(string apiKey)
+        {
+            GooglePanel.Enabled = false;
+            try
+            {
+                List<string> chatModels;
+                try
+                {
+                    chatModels = await GoogleAI.FetchChatModelNamesAsync(apiKey);
+                }
+                catch (Exception ex)
+                {
+                    _bBBlog.Error("Google model fetch failed: " + ex.Message);
+                    return false;
+                }
+                if (chatModels.Count < 1)
+                {
+                    _bBBlog.Info("No Google models fetched, keeping the built-in list");
+                    return false;
+                }
+                string previousSelection = GoogleModelComboBox.Text;
+                GoogleModelComboBox.Items.Clear();
+                foreach (string model in chatModels)
+                {
+                    GoogleModelComboBox.Items.Add(model);
+                }
+                int index = GoogleModelComboBox.FindStringExact(previousSelection);
+                if (index < 0)
+                    index = GoogleModelComboBox.FindStringExact(UserSettingsManager.Settings.GoogleModel ?? "");
+                if (index >= 0)
+                    GoogleModelComboBox.SelectedIndex = index;
+                else
+                    GoogleModelComboBox.SelectedIndex = 0;
+                UserSettingsManager.Settings.GoogleModelListCache = chatModels;
+                UserSettingsManager.SaveSettings();
+                _bBBlog.Info($"Loaded {chatModels.Count} Google models from the Google API");
+                await RefreshGoogleVoiceModelsFromAPIAsync(apiKey);
+                return true;
+            }
+            finally
+            {
+                GooglePanel.Enabled = true;
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GoogleLoadVoiceModelsButton_Click(object sender, EventArgs e)
+        {
+            string apiKey = GoogleAPIKeyTextBox.Text;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                apiKey = UserSettingsManager.Settings.GoogleAPIKey;
+            }
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                _bBBlog.Info("Google voice model list load requested without an API key");
+                MessageBox.Show("Enter a Google AI API key first", "Google voice models", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            GoogleLoadVoiceModelsButton.Enabled = false;
+            bool loaded = await RefreshGoogleVoiceModelsFromAPIAsync(apiKey);
+            GoogleLoadVoiceModelsButton.Enabled = true;
+            if (!loaded)
+            {
+                MessageBox.Show("Could not load the voice model list. Check the API key or your internet connection.", "Google voice models", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            else
+            {
+                MessageBox.Show($"Loaded {GoogleVoiceModelComboBox.Items.Count} Google voice models.", "Google voice models", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async Task<bool> RefreshGoogleVoiceModelsFromAPIAsync(string apiKey)
+        {
+            try
+            {
+                List<string> voiceModels = await GoogleAI.FetchVoiceModelNamesAsync(apiKey);
+                if (voiceModels.Count < 1)
+                {
+                    _bBBlog.Info("No Google voice models fetched, keeping the built-in list");
+                    return false;
+                }
+                string previousSelection = GoogleVoiceModelComboBox.Text;
+                GoogleVoiceModelComboBox.Items.Clear();
+                foreach (string model in voiceModels)
+                {
+                    GoogleVoiceModelComboBox.Items.Add(model);
+                }
+                int index = GoogleVoiceModelComboBox.FindStringExact(previousSelection);
+                if (index < 0)
+                    index = GoogleVoiceModelComboBox.FindStringExact(UserSettingsManager.Settings.GoogleVoiceModel ?? "");
+                if (index >= 0)
+                    GoogleVoiceModelComboBox.SelectedIndex = index;
+                else
+                    GoogleVoiceModelComboBox.SelectedIndex = 0;
+                UserSettingsManager.Settings.GoogleVoiceModel = GoogleVoiceModelComboBox.Text;
+                UserSettingsManager.Settings.GoogleVoiceModelListCache = voiceModels;
+                UserSettingsManager.SaveSettings();
+                _bBBlog.Info($"Loaded {voiceModels.Count} Google voice models from the Google API");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _bBBlog.Error("Google voice model fetch failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GoogleReasoningLoadButton_Click(object sender, EventArgs e)
+        {
+            string apiKey = GoogleAPIKeyTextBox.Text;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                apiKey = UserSettingsManager.Settings.GoogleAPIKey;
+            }
+            string model = GoogleModelComboBox.Text;
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(model))
+            {
+                _bBBlog.Info("Google reasoning levels requested without an API key or model");
+                MessageBox.Show("Select a Google model and enter a Google AI API key first", "Reasoning effort", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            GoogleReasoningLoadButton.Enabled = false;
+            GooglePanel.Enabled = false;
+            List<string> levels;
+            string fetchError;
+            try
+            {
+                (levels, fetchError) = await GoogleAI.FetchReasoningEffortLevelsAsync(apiKey, model);
+            }
+            finally
+            {
+                GoogleReasoningLoadButton.Enabled = true;
+                GooglePanel.Enabled = true;
+            }
+            if (levels == null)
+            {
+                MessageBox.Show($"Google did not report the reasoning levels for this model:\r\n\r\n{fetchError}", "Reasoning effort", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+            if (levels.Count < 1)
+            {
+                _bBBlog.Info($"Google reports {model} has no reasoning settings");
+            }
+            UserSettingsManager.Settings.GoogleReasoningLevelsCache ??= [];
+            UserSettingsManager.Settings.GoogleReasoningLevelsCache[model] = levels;
+            UserSettingsManager.SaveSettings();
+            ApplyCachedGoogleReasoningLevels(model);
+            if (levels.Count < 1)
+            {
+                MessageBox.Show($"The model \"{model}\" has no reasoning effort settings.", "Reasoning effort", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            _bBBlog.Info($"Loaded {levels.Count} reasoning levels for {model}");
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private bool ApplyCachedGoogleReasoningLevels(string model)
+        {
+            Dictionary<string, List<string>> cache = UserSettingsManager.Settings.GoogleReasoningLevelsCache;
+            if (cache == null || string.IsNullOrEmpty(model) || !cache.TryGetValue(model, out List<string> levels) || levels == null)
+            {
+                return false;
+            }
+            string previousSelection = GoogleReasoningComboBox.Text;
+            GoogleReasoningComboBox.Items.Clear();
+            GoogleReasoningComboBox.Items.Add("Auto (model default)");
+            foreach (string level in levels)
+            {
+                GoogleReasoningComboBox.Items.Add(level);
+            }
+            int index = GoogleReasoningComboBox.FindStringExact(previousSelection);
+            GoogleReasoningComboBox.SelectedIndex = index >= 0 ? index : 0;
+            return true;
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private void GoogleModelComboBox_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (!ApplyCachedGoogleReasoningLevels(GoogleModelComboBox.Text))
+            {
+                string previousSelection = GoogleReasoningComboBox.Text;
+                GoogleReasoningComboBox.Items.Clear();
+                GoogleReasoningComboBox.Items.AddRange(new object[] { "Auto (model default)", "Minimal", "Low", "Medium", "High" });
+                int index = GoogleReasoningComboBox.FindStringExact(previousSelection);
+                GoogleReasoningComboBox.SelectedIndex = index >= 0 ? index : 0;
+                _bBBlog.Info($"No cached reasoning levels for {GoogleModelComboBox.Text}, using the built-in list until Load levels");
+            }
+        }
+
+        [SupportedOSPlatform("windows10.0.10240")]
+        private async void GoogleTestSettingsButton_Click(object sender, EventArgs e)
+        {
+            string apiKey = GoogleAPIKeyTextBox.Text;
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                apiKey = UserSettingsManager.Settings.GoogleAPIKey;
+            }
+            string model = GoogleModelComboBox.Text;
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(model))
+            {
+                _bBBlog.Info("Google settings test requested without an API key or model");
+                MessageBox.Show("Enter a Google AI API key and select a model first", "Google settings test", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            float temperature = ParseFloatOrDefault(GoogleTemperatureTextBox.Text, UserSettingsManager.Settings.GoogleTemperature);
+            int maxTokens = ParseIntOrDefault(GoogleMaxTokensTextBox.Text, UserSettingsManager.Settings.GoogleMaxTokens);
+            if (temperature < 0 || temperature > 2)
+            {
+                _bBBlog.Info("Google settings test blocked by out of range temperature: " + temperature);
+                MessageBox.Show("Temperature must be between 0 and 2", "Google settings test", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            if (maxTokens < 1)
+            {
+                _bBBlog.Info("Google settings test blocked by invalid max tokens: " + maxTokens);
+                MessageBox.Show("Max tokens must be at least 1", "Google settings test", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            string reasoningEffort = GoogleReasoningComboBox.SelectedIndex > 0 ? GoogleReasoningComboBox.Text : "";
+            GoogleTestSettingsButton.Enabled = false;
+            GooglePanel.Enabled = false;
+            (bool success, string error) result;
+            try
+            {
+                result = await GoogleAI.TestSettingsAsync(apiKey, model, temperature, maxTokens, reasoningEffort);
+            }
+            finally
+            {
+                GoogleTestSettingsButton.Enabled = true;
+                GooglePanel.Enabled = true;
+            }
+            if (result.success)
+            {
+                _bBBlog.Info("Google settings test passed");
+                MessageBox.Show("Google accepted all the current settings.", "Google settings test", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                _bBBlog.Error("Google settings test failed: " + result.error);
+                MessageBox.Show("Google rejected these settings:\r\n\r\n" + result.error, "Google settings test", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 

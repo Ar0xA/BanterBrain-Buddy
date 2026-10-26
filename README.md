@@ -1,12 +1,12 @@
-OLD PROJECT! I might pick this up again t some time, but for now this has been abandoned.
+I have picked it up! At least to keep it working, might not add new features... YET!
 
 
 [![banterbrain buddy intro video](https://img.youtube.com/vi/3U-PzTrTVyo/0.jpg)](https://www.youtube.com/watch?v=3U-PzTrTVyo)
 
 
-### BanterBrain Buddy v1.0.11 bugfix release
+### BanterBrain Buddy v1.0.12 release
 
-**This program requires a valid OpenAI ChatGPT API key to operate _or_ a local Ollama installation.** 
+**This program requires a valid API key (OpenAI ChatGPT, Groq, Google AI Gemini) to operate _or_ a local Ollama installation.** 
 
 Please report all bugs to the [Discord](https://discord.gg/2EEhKpEMMT) or here on [Github](https://github.com/WhiskerWeirdo/BanterBrain-Buddy/issues). 
 
@@ -19,6 +19,13 @@ You can also download Runtime Desktop here: [Windows Runtime Desktop 8.0.4](http
 - Plugging in/out audio devices while BBB runs can have an unforseen effect on your input/output and throw errors
 - No ability to check for Twitch followers
 - ElevenLabs API check (preloading voices) can sometimes timeout after 15 seconds. This makes the first time you use it, probably quite a bit slower when editing persona's, but that's only until it works. This cannot really be fixed on my side.
+
+### RELEASE V1.0.12
+New:
+- Added Google AI (Gemini) support for LLM chat and text-to-speech (TTS) audio generation
+- Added voice model selection and custom voice options for Google Gemini TTS in Persona settings
+- Added reasoning effort and system instruction configuration for Gemini models
+- Added dynamic model fetching and caching for Google AI models and voices
 
 ### RELEASE V1.0.11
 Fixed:
